@@ -26,10 +26,10 @@ An empty graph (`dependency_graph_available: false` in `summary.json`) means "no
 ## Step 1 — Run the analysis
 
 ```bash
-python3 "<skill_base_directory>/scripts/analyze_repository.py" <repository_path> --output <output_directory>
+python3 "<skill_base_directory>/scripts/analyze_repository.py" <repository_path>
 ```
 
-- Always pass `--output`: your scratchpad, or a repo folder (e.g. `docs/architecture/`) only if the user asked to save docs there. Never write into the skill folder.
+- Run it from the user's current working directory. By default the files go to `./architecture-docs/<repository name>/` there, so the user can keep, commit or delete them. Pass `--output <directory>` only if the user named another location. Never write into the skill folder.
 - Output: `ArchitectureReport.md`, `dependency-graph.mmd`, `dependency-graph.svg`, `dependency-graph.json`, `repository-scan.json`, `summary.json`.
 - Requires Python 3.11+ to read `pyproject.toml`.
 - The SVG is rendered with `mmdc` or `npx @mermaid-js/mermaid-cli` and embedded in the report as an image, so the diagram shows in any Markdown viewer (VS Code's built-in preview doesn't render Mermaid). Without Node.js the script prints a warning and the report keeps only the Mermaid block. Tell the user if that happened.
@@ -50,7 +50,7 @@ Then open a few key nodes (entry points, the most-used node, each side of any cy
 2. **Diagram**: the Mermaid block, inline.
 3. **Findings**: each tied to a concrete node, file, or edge. Mark which came from the automated checks and which are your judgement. For a cycle, name an import that causes it.
 4. **Recommendations**: only ones backed by a finding.
-5. **Artifacts**: the output folder path.
+5. **Artifacts**: the output folder path, and that it's theirs to keep, commit, or delete (or add to `.gitignore`).
 
 For an architecture review, walk through `assets/architecture-review-checklist.md`. If the user wants a system overview or per-service docs, fill `assets/system-overview-template.md` / `assets/service-template.md` from what you found.
 
@@ -62,4 +62,4 @@ For an architecture review, walk through `assets/architecture-review-checklist.m
 | Calling the architecture healthy because the checks passed | The checks cover reference hygiene and cycles only. Say what you actually inspected. |
 | Treating "outside solution/workspace" as dead code | Examples, fixtures and tooling are often standalone on purpose. Check before recommending deletion. |
 | Inventing layers ("Controller → Service → Repository") the code doesn't have | Name only nodes and edges in the graph or that you saw in the code. |
-| Writing output into the user's repo unasked | Use the scratchpad unless they named a location. |
+| Writing output to a temp or scratchpad folder | The user can't find it later. Use the default `./architecture-docs/` or the location they named. |

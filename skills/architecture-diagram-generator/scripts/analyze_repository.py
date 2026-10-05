@@ -2,7 +2,6 @@ from pathlib import Path
 import argparse
 import json
 import sys
-import tempfile
 
 # Allow running as a plain script from any directory, not only
 # `python -m scripts.analyze_repository` from the skill folder.
@@ -285,8 +284,8 @@ class RepositoryAnalyzer:
 
 def default_output_path(repo_path):
     return (
-        Path(tempfile.gettempdir())
-        / "architecture-diagram-generator"
+        Path.cwd()
+        / "architecture-docs"
         / Path(repo_path).resolve().name
     )
 
@@ -310,7 +309,7 @@ def parse_arguments():
         default=None,
         help=(
             "Output directory (default: "
-            "<system temp>/architecture-diagram-generator/<repository name>)"
+            "./architecture-docs/<repository name> in the current directory)"
         )
     )
 

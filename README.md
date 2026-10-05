@@ -82,8 +82,10 @@ The skill triggers on requests like these.
 You can also run the analyzer directly:
 
 ```bash
-python3 skills/architecture-diagram-generator/scripts/analyze_repository.py <repo_path> --output <output_dir>
+python3 skills/architecture-diagram-generator/scripts/analyze_repository.py <repo_path> [--output <output_dir>]
 ```
+
+By default the files are written to `./architecture-docs/<repo name>/` in the current directory, so you can keep, commit or delete them.
 
 Output files: `ArchitectureReport.md`, `dependency-graph.mmd` / `.svg` / `.json`, `repository-scan.json`, `summary.json`.
 
