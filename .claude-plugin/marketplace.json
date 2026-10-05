@@ -1,0 +1,15 @@
+{
+  "name": "ythalorossy",
+  "description": "Claude Code plugins by Ythalo Saldanha.",
+  "owner": {
+    "name": "Ythalo Saldanha",
+    "url": "https://github.com/ythalorossy"
+  },
+  "plugins": [
+    {
+      "name": "architecture-diagram-generator",
+      "source": "./",
+      "description": "Architecture report and Mermaid dependency diagram for a local repository."
+    }
+  ]
+}

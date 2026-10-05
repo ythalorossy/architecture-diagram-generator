@@ -1,0 +1,343 @@
+from pathlib import Path
+import argparse
+import json
+import sys
+import tempfile
+
+# Allow running as a plain script from any directory, not only
+# `python -m scripts.analyze_repository` from the skill folder.
+SKILL_DIR = Path(__file__).resolve().parent.parent
+if str(SKILL_DIR) not in sys.path:
+    sys.path.insert(0, str(SKILL_DIR))
+
+from scripts.detect_stack import detect_stack
+from scripts.scan_repo import scan_repo
+from scripts.build_graph import build_dependency_graph, build_groups
+from scripts.generate_mermaid import generate_mermaid, render_svg
+from scripts.generate_docs import analyze_graph, generate_report
+
+
+class RepositoryAnalyzer:
+    def __init__(self, repo_path: str, output_path: str):
+        self.repo_path = Path(repo_path).resolve()
+        self.output_path = Path(output_path).resolve()
+
+    def run(self):
+        self._validate_repository()
+        self._prepare_output_folder()
+
+        print(f"Analyzing repository: {self.repo_path}")
+
+        stacks = self._detect_stack()
+        scan_results = self._scan_repository()
+        dependency_graph = self._build_graph()
+        groups = build_groups(self.repo_path)
+
+        self._save_json(
+            scan_results,
+            self.output_path / "repository-scan.json"
+        )
+
+        self._save_json(
+            dependency_graph,
+            self.output_path / "dependency-graph.json"
+        )
+
+        mermaid = self._generate_mermaid(
+            dependency_graph,
+            groups
+        )
+
+        self._generate_report(
+            stacks,
+            dependency_graph,
+            scan_results,
+            groups,
+            mermaid
+        )
+
+        summary = self._generate_summary(
+            stacks,
+            scan_results,
+            dependency_graph
+        )
+
+        self._save_json(
+            summary,
+            self.output_path / "summary.json"
+        )
+
+        self._print_summary(summary)
+
+        return summary
+
+    def _validate_repository(self):
+        if not self.repo_path.exists():
+            raise FileNotFoundError(
+                f"Repository not found: {self.repo_path}"
+            )
+
+        if not self.repo_path.is_dir():
+            raise NotADirectoryError(
+                f"Not a directory: {self.repo_path}"
+            )
+
+    def _prepare_output_folder(self):
+        self.output_path.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
+    def _detect_stack(self):
+        print("Detecting technology stack...")
+        return detect_stack(self.repo_path)
+
+    def _scan_repository(self):
+        print("Scanning repository...")
+        return scan_repo(self.repo_path)
+
+    def _build_graph(self):
+        print("Building dependency graph...")
+        return build_dependency_graph(self.repo_path)
+
+    def _generate_mermaid(self, dependency_graph, groups):
+        print("Generating Mermaid diagram...")
+
+        mermaid = generate_mermaid(
+            dependency_graph,
+            groups
+        )
+
+        mermaid_file = self.output_path / "dependency-graph.mmd"
+        svg_file = self.output_path / "dependency-graph.svg"
+
+        mermaid_file.write_text(
+            mermaid,
+            encoding="utf-8"
+        )
+
+        # A stale SVG from an earlier run would show the wrong diagram.
+        svg_file.unlink(missing_ok=True)
+
+        if dependency_graph:
+            print("Rendering diagram to SVG...")
+
+            if not render_svg(mermaid_file, svg_file):
+                print(
+                    "WARNING: Could not render dependency-graph.svg (needs Node.js "
+                    "and @mermaid-js/mermaid-cli). The report keeps the Mermaid block only."
+                )
+
+        return mermaid
+
+    def _generate_report(
+        self,
+        stacks,
+        dependency_graph,
+        scan_results,
+        groups,
+        mermaid
+    ):
+        print("Generating architecture report...")
+
+        report = generate_report(
+            project_name=self.repo_path.name,
+            stacks=stacks,
+            graph=dependency_graph,
+            scan=scan_results,
+            groups=groups,
+            mermaid=mermaid,
+            diagram_image=(
+                "dependency-graph.svg"
+                if (self.output_path / "dependency-graph.svg").is_file()
+                else None
+            )
+        )
+
+        report_file = (
+            self.output_path /
+            "ArchitectureReport.md"
+        )
+
+        report_file.write_text(
+            report,
+            encoding="utf-8"
+        )
+
+    def _generate_summary(
+        self,
+        stacks,
+        scan_results,
+        dependency_graph
+    ):
+        total_dependencies = sum(
+            len(v)
+            for v in dependency_graph.values()
+        )
+
+        facts = analyze_graph(
+            dependency_graph,
+            scan_results
+        )
+
+        return {
+            "repository": self.repo_path.name,
+            "technology_stack": stacks,
+            "projects_found": len(
+                scan_results.get(
+                    "projects",
+                    []
+                )
+            ),
+            "folders_found": len(
+                scan_results.get(
+                    "folders",
+                    []
+                )
+            ),
+            "components_found": len(
+                dependency_graph
+            ),
+            "dependencies_found": total_dependencies,
+            "test_projects": facts["tests"],
+            "orphan_projects": facts["orphans"],
+            "duplicate_project_names": facts["duplicates"],
+            "unresolved_references": [
+                {"from": source, "to": target}
+                for source, target in facts["unresolved"]
+            ],
+            "cycles": facts["cycles"],
+            "untested_projects": facts["untested"],
+            "dependency_graph_available": bool(dependency_graph),
+            "output_folder": str(
+                self.output_path
+            )
+        }
+
+    def _save_json(
+        self,
+        data,
+        file_path
+    ):
+        with open(
+            file_path,
+            "w",
+            encoding="utf-8"
+        ) as file:
+            json.dump(
+                data,
+                file,
+                indent=2
+            )
+
+    def _print_summary(
+        self,
+        summary
+    ):
+        print("\nAnalysis Complete")
+        print("=" * 50)
+
+        print(
+            f"Repository: "
+            f"{summary['repository']}"
+        )
+
+        print(
+            f"Technology Stack: "
+            f"{', '.join(summary['technology_stack'])}"
+        )
+
+        print(
+            f"Projects Found: "
+            f"{summary['projects_found']}"
+        )
+
+        print(
+            f"Components Found: "
+            f"{summary['components_found']}"
+        )
+
+        print(
+            f"Dependencies Found: "
+            f"{summary['dependencies_found']}"
+        )
+
+        for label, key in (
+            ("Projects Outside Solutions", "orphan_projects"),
+            ("Unresolved References", "unresolved_references"),
+            ("Dependency Cycles", "cycles"),
+            ("Untested Projects", "untested_projects"),
+        ):
+            if summary[key]:
+                print(f"{label}: {len(summary[key])}")
+
+        if not summary["dependency_graph_available"]:
+            print(
+                "WARNING: No supported projects found (.NET, Node.js, Python, "
+                "Maven, Gradle). Analyze this repository manually."
+            )
+
+        print(
+            f"Output Folder: "
+            f"{summary['output_folder']}"
+        )
+
+
+def default_output_path(repo_path):
+    return (
+        Path(tempfile.gettempdir())
+        / "architecture-diagram-generator"
+        / Path(repo_path).resolve().name
+    )
+
+
+def parse_arguments():
+    parser = argparse.ArgumentParser(
+        description=(
+            "Analyze a repository and "
+            "generate architecture "
+            "documentation artifacts."
+        )
+    )
+
+    parser.add_argument(
+        "repository",
+        help="Path to repository"
+    )
+
+    parser.add_argument(
+        "--output",
+        default=None,
+        help=(
+            "Output directory (default: "
+            "<system temp>/architecture-diagram-generator/<repository name>)"
+        )
+    )
+
+    return parser.parse_args()
+
+
+def main():
+    args = parse_arguments()
+
+    try:
+        analyzer = RepositoryAnalyzer(
+            repo_path=args.repository,
+            output_path=args.output or default_output_path(args.repository)
+        )
+
+        analyzer.run()
+
+        sys.exit(0)
+
+    except Exception as ex:
+        print(
+            f"\nERROR: {ex}",
+            file=sys.stderr
+        )
+
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
