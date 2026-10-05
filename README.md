@@ -1,6 +1,16 @@
 # architecture-diagram-generator
 
-A [Claude Code](https://claude.com/claude-code) plugin that analyzes a local repository and produces an architecture report, a Mermaid dependency diagram, and recommendations based on what the analysis found.
+A [Claude Code](https://claude.com/claude-code) plugin that analyzes a local repository and produces [C4 model](https://c4model.com/) diagrams, an architecture report, and recommendations based on what the analysis found.
+
+| C4 level | Shows | Where it comes from |
+|---|---|---|
+| 1 · System context | the system, its users, the external systems it talks to | Claude, from the code and docs, in an editable `c4-model.json` |
+| 2 · Containers | what runs on its own (web API, web app, worker, CLI) and its data stores | detected in project files, dependencies, EF Core/DB clients, docker-compose |
+| 3 · Components | each container's projects or modules and their dependencies | the dependency graph below, without tests |
+
+Each level is its own diagram, so no single picture has to show everything. Containers with more than 20 components are split by folder, and in dense graphs shortcut edges are hidden.
+
+The full dependency graph stays in an appendix:
 
 | Stack | What becomes a node | What becomes an edge |
 |---|---|---|
@@ -31,7 +41,7 @@ To update later: `/plugin marketplace update ythalorossy`.
 |---|---|---|---|
 | [Claude Code](https://claude.com/claude-code) | Yes | any recent | runs the skill |
 | Python | Yes | **3.11+** | the analyzer (standard library only, no `pip install`) |
-| Node.js | Optional | **22.13+** | rendering the diagram to SVG with [`@mermaid-js/mermaid-cli`](https://github.com/mermaid-js/mermaid-cli) |
+| Node.js | Optional | **22.13+** | rendering the diagrams to SVG with [`@mermaid-js/mermaid-cli`](https://github.com/mermaid-js/mermaid-cli) |
 
 **You don't need the toolchain of the repository you analyze.** The analyzer only reads files (`.csproj`, `package.json`, `pyproject.toml`, `pom.xml`, `settings.gradle`, source imports). You can analyze a .NET or Java repository without the .NET SDK, a JDK, Maven or Gradle installed, and you don't need to run `npm install` first.
 
@@ -53,7 +63,7 @@ If your system Python is older, install a newer one with your package manager, [
 
 ### Node.js and mermaid-cli (optional, for the SVG)
 
-The report embeds `dependency-graph.svg` so the diagram shows in any Markdown viewer, including VS Code's built-in preview, which doesn't render Mermaid. The analyzer uses `mmdc` if it's on your PATH, and otherwise falls back to `npx -y @mermaid-js/mermaid-cli`.
+The report embeds the diagrams as SVGs so they show in any Markdown viewer, including VS Code's built-in preview, which doesn't render Mermaid. The analyzer uses `mmdc` if it's on your PATH, and otherwise falls back to `npx -y @mermaid-js/mermaid-cli`.
 
 Install mermaid-cli once, globally:
 
@@ -73,6 +83,7 @@ Without Node.js the analysis still works. The report then contains only the Merm
 
 Ask Claude, for example:
 
+- *"Generate C4 diagrams for ~/src/my-repo"*
 - *"Generate an architecture diagram for ~/src/my-repo"*
 - *"Review the architecture of this repository"*
 - *"How do the projects in this solution depend on each other?"*
@@ -87,7 +98,19 @@ python3 skills/architecture-diagram-generator/scripts/analyze_repository.py <rep
 
 By default the files are written to `./architecture-docs/<repo name>/` in the current directory, so you can keep, commit or delete them.
 
-Output files: `ArchitectureReport.md`, `dependency-graph.mmd` / `.svg` / `.json`, `repository-scan.json`, `summary.json`.
+Output files:
+
+- `ArchitectureReport.md`
+- `c4-facts.json`, `c4-container.mmd` / `.svg`, `c4-component-<container>.mmd` / `.svg`
+- `dependency-graph.mmd` / `.svg` / `.json`, `repository-scan.json`, `summary.json`
+
+Run on its own, the analyzer draws the Container and Component levels from code facts only. Through the skill, Claude also writes `c4-model.json` (people, external systems, descriptions, each backed by evidence or marked as an assumption) and draws the System Context level. You can edit `c4-model.json` and redraw every diagram:
+
+```bash
+python3 skills/architecture-diagram-generator/scripts/render_c4.py ./architecture-docs/<repo name>
+```
+
+The model format is described in [`assets/c4-model-reference.md`](skills/architecture-diagram-generator/assets/c4-model-reference.md).
 
 ## Layout
 
@@ -96,7 +119,7 @@ Output files: `ArchitectureReport.md`, `dependency-graph.mmd` / `.svg` / `.json`
 skills/architecture-diagram-generator/
   SKILL.md                 instructions Claude follows
   scripts/                 analyzer (one module per ecosystem)
-  assets/                  report template, review checklist, and templates for the system-overview and per-service docs
+  assets/                  report template, C4 model reference, review checklist, and templates for the system-overview and per-service docs
 ```
 
 ## License

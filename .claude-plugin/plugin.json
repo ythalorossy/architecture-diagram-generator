@@ -1,7 +1,7 @@
 {
   "name": "architecture-diagram-generator",
-  "version": "1.2.0",
-  "description": "Analyze a local repository (.NET, Node.js/TypeScript, Python, Java) and generate an architecture report, a Mermaid dependency diagram, and evidence-based recommendations.",
+  "version": "2.0.0",
+  "description": "Analyze a local repository (.NET, Node.js/TypeScript, Python, Java) and generate C4 model diagrams (context, container, component), an architecture report, and evidence-based recommendations.",
   "author": {
     "name": "Ythalo Saldanha",
     "url": "https://github.com/ythalorossy"
@@ -9,5 +9,5 @@
   "homepage": "https://github.com/ythalorossy/architecture-diagram-generator",
   "repository": "https://github.com/ythalorossy/architecture-diagram-generator",
   "license": "MIT",
-  "keywords": ["architecture", "dependency-graph", "mermaid", "documentation"]
+  "keywords": ["architecture", "c4-model", "dependency-graph", "mermaid", "documentation"]
 }

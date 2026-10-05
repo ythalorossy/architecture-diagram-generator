@@ -16,21 +16,8 @@
 
 ---
 
-## System Overview
-
-{{system_overview}}
-
----
-
-## Components
-
-{{components}}
-
----
-
-## Dependency Analysis
-
-{{dependency_analysis}}
+<!-- c4:start -->
+<!-- c4:end -->
 
 ---
 
@@ -49,6 +36,22 @@
 ## Recommendations
 
 {{recommendations}}
+
+---
+
+## Appendix: Project Dependency Graph
+
+Every project or module and every reference between them, tests included. The automated checks above (cycles, stray projects, untested projects) are based on this graph.
+
+{{system_overview}}
+
+### Components
+
+{{components}}
+
+### Dependency Analysis
+
+{{dependency_analysis}}
 
 ---
 

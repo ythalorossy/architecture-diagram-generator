@@ -7,7 +7,7 @@ from pathlib import Path, PurePosixPath
 
 IGNORED_DIRS = {
     "bin", "obj", "node_modules", "TestResults", "__pycache__", "venv",
-    "dist", "build", "target", "coverage", "out",
+    "dist", "build", "target", "coverage", "out", "site-packages",
 }
 
 
@@ -26,7 +26,11 @@ SLN_PROJECT_LINE = re.compile(
 def walk_files(repo_path, predicate):
     """Yield files under repo_path matching predicate, skipping build/tooling folders."""
     for root, dirs, files in os.walk(repo_path):
-        dirs[:] = sorted(d for d in dirs if not is_ignored_dir(d))
+        # A folder with pyvenv.cfg is a Python virtualenv, whatever its name.
+        dirs[:] = sorted(
+            d for d in dirs
+            if not is_ignored_dir(d) and not (Path(root) / d / "pyvenv.cfg").exists()
+        )
         for file_name in sorted(files):
             if predicate(file_name):
                 yield Path(root) / file_name

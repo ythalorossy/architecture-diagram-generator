@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import re
 
 
-GENERATOR_VERSION = "1.1"
+GENERATOR_VERSION = "2.0"
 
 ASSETS_DIR = (
     Path(__file__).parent.parent / "assets"
@@ -289,19 +289,21 @@ def generate_report(
         # viewers that render Mermaid (GitHub, GitLab) and for editing.
         overview += [
             "",
-            f"![Dependency graph]({diagram_image})",
-            "",
             "<details>",
-            "<summary>Mermaid source</summary>",
+            "<summary>Full dependency graph</summary>",
+            "",
+            f"![Dependency graph]({diagram_image})",
             "",
             "```mermaid", mermaid.rstrip(), "```",
             "",
             "</details>"
         ]
     elif mermaid:
-        overview += ["", "```mermaid", mermaid.rstrip(), "```"]
+        overview += ["", "<details>", "<summary>Full dependency graph</summary>", "",
+                     "```mermaid", mermaid.rstrip(), "```", "", "</details>"]
 
     artifacts = [
+        "- C4 diagrams: listed under Architecture (C4 model) above",
         "- [Mermaid source](dependency-graph.mmd)",
         "- [Dependency data (JSON)](dependency-graph.json)",
         "- [Repository scan (JSON)](repository-scan.json)",

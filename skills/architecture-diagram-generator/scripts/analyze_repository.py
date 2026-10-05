@@ -14,6 +14,8 @@ from scripts.scan_repo import scan_repo
 from scripts.build_graph import build_dependency_graph, build_groups
 from scripts.generate_mermaid import generate_mermaid, render_svg
 from scripts.generate_docs import analyze_graph, generate_report
+from scripts.c4_facts import collect_facts
+from scripts.render_c4 import render as render_c4
 
 
 class RepositoryAnalyzer:
@@ -55,11 +57,15 @@ class RepositoryAnalyzer:
             mermaid
         )
 
+        c4 = self._generate_c4(dependency_graph)
+
         summary = self._generate_summary(
             stacks,
             scan_results,
             dependency_graph
         )
+
+        summary["c4"] = c4
 
         self._save_json(
             summary,
@@ -162,6 +168,41 @@ class RepositoryAnalyzer:
             report,
             encoding="utf-8"
         )
+
+    def _generate_c4(self, dependency_graph):
+        print("Collecting C4 facts...")
+
+        facts = collect_facts(self.repo_path, dependency_graph)
+
+        self._save_json(
+            facts,
+            self.output_path / "c4-facts.json"
+        )
+
+        print("Drawing C4 diagrams...")
+
+        # An existing c4-model.json (written by Claude or edited by the user)
+        # is kept and used; if it no longer matches the facts, fall back to
+        # facts-only diagrams and report what to fix.
+        result = render_c4(self.output_path)
+        model_errors = result["errors"]
+        if model_errors:
+            result = render_c4(self.output_path, facts_only=True)
+
+        if result["svg_failed"]:
+            print(
+                "WARNING: Could not render the C4 SVGs (needs Node.js and "
+                "@mermaid-js/mermaid-cli). The report keeps the Mermaid blocks only."
+            )
+
+        return {
+            "containers": len(facts["containers"]),
+            "data_stores": len(facts["data_stores"]),
+            "external_systems": len(facts["external_systems"]),
+            "diagrams": result["diagrams"],
+            "model": "facts-only" if result["facts_only"] else "c4-model.json",
+            "model_errors": model_errors,
+        }
 
     def _generate_summary(
         self,
@@ -275,6 +316,16 @@ class RepositoryAnalyzer:
                 "WARNING: No supported projects found (.NET, Node.js, Python, "
                 "Maven, Gradle). Analyze this repository manually."
             )
+
+        c4 = summary["c4"]
+        print(
+            f"C4: {c4['containers']} container(s), {c4['data_stores']} data store(s), "
+            f"{c4['external_systems']} external system(s), {len(c4['diagrams'])} diagram(s) "
+            f"from {c4['model']}"
+        )
+
+        for error in c4["model_errors"]:
+            print(f"C4 MODEL ERROR: {error}")
 
         print(
             f"Output Folder: "

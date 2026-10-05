@@ -9,7 +9,7 @@
     {
       "name": "architecture-diagram-generator",
       "source": "./",
-      "description": "Architecture report and Mermaid dependency diagram for a local repository."
+      "description": "C4 diagrams, architecture report and dependency graph for a local repository."
     }
   ]
 }
