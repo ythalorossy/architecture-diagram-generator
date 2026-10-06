@@ -16,7 +16,7 @@ The report also has sections built straight from the code:
 | Section | Contents |
 |---|---|
 | Deployment | docker-compose services and their dependencies (as a diagram), Dockerfiles (stages, runtime image, ports, entry point), Kubernetes workloads, CI and hosting files |
-| API endpoints | HTTP routes from Spring, JAX-RS, ASP.NET (controllers and minimal APIs), Express/Fastify/Koa/NestJS, FastAPI/Flask/Django, Go net/http, gin, echo and chi |
+| API endpoints | HTTP routes from Spring, JAX-RS, ASP.NET (attribute-routed and conventional MVC controllers, minimal APIs), Express/Fastify/Koa/NestJS, FastAPI/Flask/Django, Go net/http, gin, echo and chi |
 | Configuration | environment variables the code reads or compose sets, with defaults, and the config files found |
 | Technology inventory | runtime, frameworks and key libraries with versions, per container |
 

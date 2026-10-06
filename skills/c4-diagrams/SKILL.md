@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires python3 (3.11+). Node.js with @mermaid-js/mermaid-cli is optional, for SVG rendering.
 metadata:
   author: ythalorossy
-  version: "3.0.1"
+  version: "3.1.0"
 ---
 
 # Architecture Diagram Generator
@@ -30,10 +30,10 @@ The script does the parts that are objective, and every item it finds carries `f
 
 - **Containers:** .NET `Sdk.Web`/`Worker`/Functions/`Exe` projects; Spring Boot/Quarkus/Micronaut modules with a main class or boot plugin (library modules are not containers); Go `package main` folders; Python packages using FastAPI/Flask/Django/Streamlit/Gradio/MCP/Celery or declaring `[project.scripts]`; Node.js packages using Express/Nest/Next/React/Vue/MCP or declaring `bin`; docker-compose services (a `build:` context is matched to the container below it).
 - **Data stores:** EF Core providers, Spring Data templates (`RedisTemplate`, `MongoTemplate`, `KafkaTemplate`…), DB/cache/queue clients in Python, Node.js and Go, Maven/NuGet drivers, docker-compose images.
-- **External systems:** SDKs (Anthropic, OpenAI, AWS, Stripe, Sentry…), URL hosts in files that use an HTTP client, and URL settings in `appsettings*.json`, `application*.yml`/`.properties` and `config.yml`.
+- **External systems:** SDKs (Anthropic, OpenAI, AWS, Stripe, Sentry, Microsoft Graph…), URL hosts in files that use an HTTP or SOAP client (URLs in comments are skipped), and URL settings in `appsettings*.json`, `application*.yml`/`.properties` and `config.yml`.
 - **Links between containers:** compose `depends_on`, and front-end dev-server proxies (Vite, webpack, Next.js rewrites, CRA `proxy`) to the back end.
-- **Components:** the modules each container is built from (projects, Maven/Gradle modules, Go packages, Python/TS folders), and inside them the code structure: Java/Kotlin packages, C# namespaces and Go packages grouped below each module's root, with import edges. Stores and external systems attach to the package that uses them. Tests are left out; dense graphs hide shortcut edges; more than 20 components are split per module or folder.
-- **Report sections:** HTTP endpoints (Spring, JAX-RS, ASP.NET, Express/Fastify/Nest, FastAPI/Flask/Django, Go), deployment (compose, Dockerfiles, Kubernetes, CI, hosting), environment variables with defaults, and a technology inventory per container.
+- **Components:** the modules each container is built from (projects, Maven/Gradle modules, Go packages, Python/TS folders), and inside them the code structure: Java/Kotlin packages, C# namespaces and Go packages grouped below each module's root, with import edges. Stores and external systems attach to the package that uses them. Tests and third-party code (`vendor/`, `wwwroot/lib`, `*.min.js`) are left out; dense graphs hide shortcut edges; more than 20 components are split per module or folder.
+- **Report sections:** HTTP endpoints (Spring, JAX-RS, ASP.NET attribute and conventional `{controller}/{action}` routes, Express/Fastify/Nest, FastAPI/Flask/Django, Go), deployment (compose, Dockerfiles, Kubernetes, CI, hosting), environment variables with defaults, and a technology inventory per container.
 
 ## Step 1 — Run the analysis
 

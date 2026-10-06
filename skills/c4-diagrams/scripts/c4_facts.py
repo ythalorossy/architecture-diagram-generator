@@ -88,6 +88,7 @@ CODE_SIGNALS = [
     (r"\bnew\s+BlobServiceClient\s*\(", "store", "Azure Blob Storage"),
     (r"\bnew\s+ServiceBusClient\s*\(", "store", "Azure Service Bus"),
     (r"\bnew\s+AmazonS3Client\s*\(", "store", "Amazon S3"),
+    (r"\bnew\s+GraphServiceClient\s*\(|\bGraphServiceClient\.builder\(", "external", "Microsoft Graph"),
     # JVM (Spring Data and common clients)
     (r"\b(?:StringRedisTemplate|RedisTemplate|ReactiveRedisTemplate|RedisConnectionFactory|LettuceConnectionFactory|JedisPool|RedissonClient)\b", "store", "Redis"),
     (r"\b(?:MongoTemplate|MongoRepository|ReactiveMongoTemplate)\b", "store", "MongoDB"),
@@ -111,6 +112,7 @@ IMPORT_SIGNALS = {
     "google.generativeai": ("external", "Google Gemini API"), "google.genai": ("external", "Google Gemini API"),
     "boto3": ("external", "AWS"), "stripe": ("external", "Stripe"), "twilio": ("external", "Twilio"),
     "sendgrid": ("external", "SendGrid"), "slack_sdk": ("external", "Slack API"),
+    "msgraph": ("external", "Microsoft Graph"),
     # Node.js
     "pg": ("store", "PostgreSQL"), "postgres": ("store", "PostgreSQL"), "mysql": ("store", "MySQL"),
     "mysql2": ("store", "MySQL"), "mssql": ("store", "SQL Server"), "tedious": ("store", "SQL Server"),
@@ -119,7 +121,7 @@ IMPORT_SIGNALS = {
     "@elastic/elasticsearch": ("store", "Elasticsearch"), "kafkajs": ("store", "Kafka"), "amqplib": ("store", "RabbitMQ"),
     "@anthropic-ai/sdk": ("external", "Anthropic API"), "@google/generative-ai": ("external", "Google Gemini API"),
     "@aws-sdk": ("external", "AWS"), "aws-sdk": ("external", "AWS"), "@sendgrid/mail": ("external", "SendGrid"),
-    "@slack/web-api": ("external", "Slack API"),
+    "@slack/web-api": ("external", "Slack API"), "@microsoft/microsoft-graph-client": ("external", "Microsoft Graph"),
     "@sentry/node": ("external", "Sentry"), "@sentry/react": ("external", "Sentry"), "sentry_sdk": ("external", "Sentry"),
     "applicationinsights": ("external", "Azure Application Insights"), "dd-trace": ("external", "Datadog"),
     "ddtrace": ("external", "Datadog"), "newrelic": ("external", "New Relic"),
@@ -133,6 +135,7 @@ IMPORT_SIGNALS = {
     "github.com/nats-io/nats.go": ("store", "NATS"), "github.com/elastic/go-elasticsearch": ("store", "Elasticsearch"),
     "github.com/aws/aws-sdk-go": ("external", "AWS"), "github.com/aws/aws-sdk-go-v2": ("external", "AWS"),
     "github.com/stripe/stripe-go": ("external", "Stripe"), "github.com/getsentry/sentry-go": ("external", "Sentry"),
+    "github.com/microsoftgraph/msgraph-sdk-go": ("external", "Microsoft Graph"),
 }
 
 # NuGet / Maven package prefixes -> (kind, technology).
@@ -140,6 +143,7 @@ PACKAGE_SIGNALS = [
     ("AWSSDK.", "external", "AWS"), ("Stripe.net", "external", "Stripe"), ("SendGrid", "external", "SendGrid"),
     ("Twilio", "external", "Twilio"), ("Anthropic", "external", "Anthropic API"), ("OpenAI", "external", "OpenAI API"),
     ("Azure.AI.OpenAI", "external", "Azure OpenAI"),
+    ("Microsoft.Graph", "external", "Microsoft Graph"), ("microsoft-graph", "external", "Microsoft Graph"),
     ("Microsoft.ApplicationInsights", "external", "Azure Application Insights"),
     ("Sentry", "external", "Sentry"), ("Datadog.Trace", "external", "Datadog"),
     ("NewRelic.Agent", "external", "New Relic"), ("OpenTelemetry.Exporter", "external", "OpenTelemetry collector"),
@@ -160,18 +164,28 @@ HTTP_CLIENT = re.compile(
     r"\bHttpClient\b|\bRestClient\b|\bFeignClient\b|\bHttpURLConnection\b|\brequests\.|\bhttpx\b|\baiohttp\b|\burllib\b|"
     r"\baxios\b|\bfetch\(|\bky\b|\bgot\(|\bRestTemplate\b|\bWebClient\b|\bOkHttp|\bhttp\.(?:Get|Post|NewRequest)|\bresty\b"
 )
+# SOAP clients (WCF, JAX-WS, zeep, node-soap) call their endpoint without an HTTP client.
+SOAP_CLIENT = re.compile(r"\bEndpointAddress\b|\bClientBase<|@WebServiceClient\b|\bzeep\.|\bsoap\.createClient")
 URL = re.compile(r"""https?://([A-Za-z0-9.-]+\.[A-Za-z]{2,})""")
 IGNORED_HOSTS = re.compile(
     r"(^|\.)(localhost|example\.(com|org)|w3\.org|json-schema\.org|schemas\.[a-z.]+|xmlsoap\.org|"
     r"microsoft\.com|aka\.ms|github\.com|githubusercontent\.com|npmjs\.(com|org)|pypi\.org|"
     r"python\.org|mozilla\.org|swagger\.io|openapis\.org|apache\.org|nuget\.org|"
-    r"database\.windows\.net|readthedocs\.io)$"
+    r"database\.windows\.net|readthedocs\.io|tempuri\.org)$"
 )
+# Hosts of well-known APIs -> technology, so a raw URL lands on the same box as
+# the SDK. Checked before IGNORED_HOSTS (graph.microsoft.com is a microsoft.com host).
+KNOWN_HOSTS = {"graph.microsoft.com": "Microsoft Graph"}
 PY_IMPORT = re.compile(r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))", re.MULTILINE)
 JS_IMPORT = re.compile(r"""(?:from\s+|require\(\s*|import\s*\(\s*|import\s+)['"]([^'"]+)['"]""")
 
 
 # ---------- helpers ----------
+
+def _wanted_host(host):
+    """A host worth reporting as an external system: a known API, or not on the ignore list."""
+    return host in KNOWN_HOSTS or not IGNORED_HOSTS.search(host)
+
 
 def _rel(repo, path):
     return Path(path).resolve().relative_to(repo).as_posix()
@@ -188,16 +202,35 @@ def _read(path):
         return ""
 
 
+def _is_vendored(rel_parts):
+    """Third-party code checked into the repo: vendor/ folders, ASP.NET wwwroot/lib (libman), minified bundles."""
+    folders = [part.lower() for part in rel_parts[:-1]]
+    return (
+        any(part in ("vendor", "vendors") for part in folders)
+        or any(a == "wwwroot" and b == "lib" for a, b in zip(folders, folders[1:]))
+        or re.search(r"\.min\.m?js$", rel_parts[-1].lower()) is not None
+    )
+
+
 def _source_files(repo, test_dirs):
     files = []
     for file in walk_files(repo, lambda name: name.endswith(SOURCE_EXTENSIONS)):
         rel_parts = file.resolve().relative_to(repo).parts
         if any(part.lower() in TEST_DIRS for part in rel_parts[:-1]):
             continue
+        if _is_vendored(rel_parts):
+            continue
         if any(file.resolve().is_relative_to(d) for d in test_dirs):
             continue
         files.append(file.resolve())
     return files
+
+
+def _in_comment(text, index):
+    """True when index sits in a comment: after // or # on its line, or on a /* ... */ block line."""
+    # Drop earlier URLs on the line first: their "//" and "#" aren't comments.
+    before = re.sub(r"\w+://\S*", "", text[text.rfind("\n", 0, index) + 1:index])
+    return before.lstrip().startswith(("*", "/*", "<!--")) or "//" in before or "#" in before
 
 
 def _in_string(text, index):
@@ -228,7 +261,7 @@ def _config_urls(text):
                 visit(child, keys)
         elif isinstance(value, str):
             match = URL.match(value.strip())
-            if match and not IGNORED_HOSTS.search(match.group(1).lower()):
+            if match and _wanted_host(match.group(1).lower()):
                 # Drop year/number keys and generic leaf names: the setting is what's left.
                 named = [k for k in keys if not k.isdigit()]
                 generic = {"url", "uri", "baseurl", "apiurl", "endpoint", "host", "address"}
@@ -466,7 +499,7 @@ def _yaml_urls(text):
                 continue
             keys, value = [k for _, k in stack] + [key], m.group(3)
         url = URL.match(value.strip().strip("\"'").split("${")[-1].split(":", 1)[-1] if value.strip().startswith("${") else value.strip().strip("\"'"))
-        if url and not IGNORED_HOSTS.search(url.group(1).lower()):
+        if url and _wanted_host(url.group(1).lower()):
             found.append((".".join(keys), url.group(1).lower(), number))
     return found
 
@@ -732,11 +765,13 @@ def collect_facts(repo_path, graph):
                 kind, technology = hit
                 record(stores if kind == "store" else externals, technology, new_entry(technology), file, _line_of(text, index))
 
-        if HTTP_CLIENT.search(text):
+        soap = SOAP_CLIENT.search(text)
+        if soap or HTTP_CLIENT.search(text):
             for match in URL.finditer(text):
                 host = match.group(1).lower()
-                if not IGNORED_HOSTS.search(host):
-                    record(externals, host, new_entry(host), file, _line_of(text, match.start()))
+                key = KNOWN_HOSTS.get(host) or (None if IGNORED_HOSTS.search(host) else host)
+                if key and not _in_comment(text, match.start()):
+                    record(externals, key, new_entry("SOAP" if soap and key == host else key), file, _line_of(text, match.start()))
 
     # Package references (NuGet, Maven) that imply a store or a third-party API.
     for project in projects:
@@ -755,11 +790,17 @@ def collect_facts(repo_path, graph):
     for file in walk_files(repo, lambda name: re.match(r"appsettings.*\.json$", name)):
         text = _read(file)
         for setting, host in _config_urls(text):
+            if host in KNOWN_HOSTS:
+                record(externals, KNOWN_HOSTS[host], new_entry(KNOWN_HOSTS[host]), file.resolve(), _line_of(text, max(text.find(host), 0)))
+                continue
             config_urls.setdefault(setting, []).append((host, file, _line_of(text, max(text.find(host), 0))))
     for file in walk_files(repo, lambda name: re.match(r"(application|bootstrap)[\w-]*\.(ya?ml|properties)$|^config\.ya?ml$|^settings\.ya?ml$", name)):
         if any(part in TEST_DIRS for part in file.relative_to(repo).parts[:-1]):
             continue
         for setting, host, line in _yaml_urls(_read(file)):
+            if host in KNOWN_HOSTS:
+                record(externals, KNOWN_HOSTS[host], new_entry(KNOWN_HOSTS[host]), file.resolve(), line)
+                continue
             keys = [k for k in setting.split(".") if k.lower() not in ("url", "uri", "base-url", "baseurl", "base_url", "api-url", "endpoint", "host")]
             config_urls.setdefault(".".join(keys[-2:]) or setting, []).append((host, file, line))
     for setting, hits in config_urls.items():

@@ -229,6 +229,16 @@ JAXRS_METHOD = re.compile(r"@(GET|POST|PUT|DELETE|PATCH)\b")
 CS_ROUTE = re.compile(r"\[Route\s*\(\s*\"([^\"]*)\"")
 CS_HTTP = re.compile(r"\[Http(Get|Post|Put|Delete|Patch)\s*(?:\(\s*\"([^\"]*)\")?")
 CS_CLASS = re.compile(r"class\s+(\w+?)(?:Controller)?\b")
+# MVC controllers without [Route] use conventional routing: every public method is an action.
+CS_CONTROLLER = re.compile(r"\b(abstract\s+)?(?:partial\s+)?class\s+(\w+?)Controller\b")
+CS_ACTION = re.compile(
+    r"^[ \t]*public\s+(?!static\b|class\b|abstract\b)(?:(?:async|virtual|override|new)\s+)*[\w<>\[\],.? ]+?\s+(\w+)\s*\(",
+    re.MULTILINE
+)
+CS_ATTRIBUTES = re.compile(r"(?:^[ \t]*\[[^\n]*\][ \t]*(?://[^\n]*)?\r?\n)+\Z", re.MULTILINE)
+# Attributes can share brackets ([HttpPost, ActionName("x")]), so these don't require a leading "[".
+CS_ACTION_HTTP = re.compile(r"\bHttp(Get|Post|Put|Delete|Patch)\b\s*(?:\(\s*\"([^\"]*)\")?")
+CS_ACTION_NAME = re.compile(r"\bActionName\s*\(\s*\"([^\"]+)\"")
 CS_MINIMAL = re.compile(r"\.Map(Get|Post|Put|Delete|Patch)\s*\(\s*\"([^\"]*)\"")
 JS_ROUTE = re.compile(r"\b(?:app|router|server|api|routes|fastify|r)\s*\.\s*(" + "|".join(HTTP_METHODS) + r")\s*\(\s*" + _STR)
 NEST_CONTROLLER = re.compile(r"@Controller\s*\(\s*(?:" + _STR + r")?")
@@ -244,6 +254,29 @@ GO_ROUTER = re.compile(r"\.(GET|POST|PUT|DELETE|PATCH|Get|Post|Put|Delete|Patch)
 def _join_path(prefix, path):
     joined = "/" + "/".join(part.strip("/") for part in (prefix, path) if part and part.strip("/"))
     return joined if joined != "/" or not (prefix or path) else "/"
+
+
+def _conventional_actions(text):
+    """[(method, path, index)] for an MVC controller routed by {controller}/{action}."""
+    controller = CS_CONTROLLER.search(text)
+    if controller.group(1):
+        return []
+    name = controller.group(2)
+    found = []
+    for m in CS_ACTION.finditer(text, controller.end()):
+        action = m.group(1)
+        if action == name + "Controller":
+            continue
+        attributes = CS_ATTRIBUTES.search(text, 0, m.start())
+        attributes = attributes.group(0) if attributes else ""
+        if re.search(r"\bNonAction\b", attributes):
+            continue
+        renamed = CS_ACTION_NAME.search(attributes)
+        path = f"/{name}/{renamed.group(1) if renamed else action}"
+        verbs = CS_ACTION_HTTP.findall(attributes)
+        for verb, template in verbs or [("ANY", None)]:
+            found.append((verb.upper(), "/" + template.lstrip("/~") if template else path, m.start()))
+    return found
 
 
 def _endpoints_in(text, suffix):
@@ -263,6 +296,10 @@ def _endpoints_in(text, suffix):
             for m in JAXRS_METHOD.finditer(text):
                 local = next((p.group(1) for p in paths[1:] if 0 < m.start() - p.start() < 300 or 0 < p.start() - m.start() < 300), "")
                 found.append((m.group(1), _join_path(base, local), m.start()))
+    elif suffix == ".cs" and not CS_ROUTE.search(text) and CS_CONTROLLER.search(text):
+        found.extend(_conventional_actions(text))
+        for m in CS_MINIMAL.finditer(text):
+            found.append((m.group(1).upper(), m.group(2), m.start()))
     elif suffix == ".cs":
         routes = list(CS_ROUTE.finditer(text))
         class_name = CS_CLASS.search(text)
