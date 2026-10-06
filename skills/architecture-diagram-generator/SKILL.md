@@ -1,6 +1,11 @@
 ---
 name: architecture-diagram-generator
 description: Use when the user asks for architecture documentation, C4 diagrams, a dependency graph or diagram, an architecture review, or an explanation of how a repository's projects, packages or modules fit together. Works on local repository paths (.NET, Node.js/TypeScript, Python, Java Maven/Gradle).
+license: MIT
+compatibility: Requires python3 (3.11+). Node.js with @mermaid-js/mermaid-cli is optional, for SVG rendering.
+metadata:
+  author: ythalorossy
+  version: "2.1.0"
 ---
 
 # Architecture Diagram Generator
@@ -28,9 +33,10 @@ The script does the parts that are objective, and every item it finds carries `f
 ## Step 1 — Run the analysis
 
 ```bash
-python3 "<skill_base_directory>/scripts/analyze_repository.py" <repository_path>
+python3 scripts/analyze_repository.py <repository_path>
 ```
 
+- Paths to `scripts/` and `assets/` are relative to this skill's folder (the one holding this `SKILL.md`). Use its absolute path when running, since the working directory is the user's repository.
 - Run it from the user's current working directory. By default the files go to `./architecture-docs/<repository name>/` there, so the user can keep, commit or delete them. Pass `--output <directory>` only if the user named another location. Never write into the skill folder.
 - It writes `c4-facts.json`, facts-only C4 diagrams (`c4-container.*`, `c4-component-*.*`), `ArchitectureReport.md`, `dependency-graph.*`, `repository-scan.json` and `summary.json`.
 - Requires Python 3.11+ to read `pyproject.toml`.
@@ -58,7 +64,7 @@ Write `c4-model.json` in the output folder, following `assets/c4-model-reference
 Then run:
 
 ```bash
-python3 "<skill_base_directory>/scripts/render_c4.py" <output folder>
+python3 scripts/render_c4.py <output folder>
 ```
 
 If it exits with errors, fix the model and run it again. It rewrites the C4 section of `ArchitectureReport.md` and the `c4-*.mmd`/`.svg` files.

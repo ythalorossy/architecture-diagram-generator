@@ -1,6 +1,6 @@
 {
   "name": "ythalorossy",
-  "description": "Claude Code plugins by Ythalo Saldanha.",
+  "description": "Plugins and agent skills by Ythalo Saldanha.",
   "owner": {
     "name": "Ythalo Saldanha",
     "url": "https://github.com/ythalorossy"
@@ -9,6 +9,7 @@
     {
       "name": "architecture-diagram-generator",
       "source": "./",
+      "version": "2.1.0",
       "description": "C4 diagrams, architecture report and dependency graph for a local repository."
     }
   ]

@@ -1,6 +1,6 @@
 """
 Draw the C4 diagrams (context, container, component) from c4-facts.json and,
-when present, the c4-model.json Claude writes on top of it.
+when present, the c4-model.json the agent writes on top of it.
 
     python3 render_c4.py <output folder> [--facts-only]
 

@@ -181,7 +181,7 @@ class RepositoryAnalyzer:
 
         print("Drawing C4 diagrams...")
 
-        # An existing c4-model.json (written by Claude or edited by the user)
+        # An existing c4-model.json (written by the agent or edited by the user)
         # is kept and used; if it no longer matches the facts, fall back to
         # facts-only diagrams and report what to fix.
         result = render_c4(self.output_path)

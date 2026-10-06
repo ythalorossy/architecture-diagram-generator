@@ -1,10 +1,10 @@
 # architecture-diagram-generator
 
-A [Claude Code](https://claude.com/claude-code) plugin that analyzes a local repository and produces [C4 model](https://c4model.com/) diagrams, an architecture report, and recommendations based on what the analysis found.
+An [Agent Skill](https://agentskills.io) that analyzes a local repository and produces [C4 model](https://c4model.com/) diagrams, an architecture report, and recommendations based on what the analysis found. It works in Claude Code, Codex, Cursor, Gemini CLI, OpenCode, GitHub Copilot CLI, pi and any other agent that reads `SKILL.md`.
 
 | C4 level | Shows | Where it comes from |
 |---|---|---|
-| 1 · System context | the system, its users, the external systems it talks to | Claude, from the code and docs, in an editable `c4-model.json` |
+| 1 · System context | the system, its users, the external systems it talks to | the agent, from the code and docs, in an editable `c4-model.json` |
 | 2 · Containers | what runs on its own (web API, web app, worker, CLI) and its data stores | detected in project files, dependencies, EF Core/DB clients, docker-compose |
 | 3 · Components | each container's projects or modules and their dependencies | the dependency graph below, without tests |
 
@@ -24,22 +24,39 @@ The analysis also checks for dependency cycles, projects outside the solution or
 
 ## Install
 
-In Claude Code:
+### Any agent
 
+[`npx skills`](https://github.com/vercel-labs/skills) installs the skill into every Agent-Skills-compatible agent it finds (Codex, Cursor, OpenCode, Gemini CLI, GitHub Copilot, Windsurf, Cline, Claude Code and others):
+
+```bash
+npx skills add ythalorossy/architecture-diagram-generator          # this project
+npx skills add ythalorossy/architecture-diagram-generator -g       # your user account
+npx skills add ythalorossy/architecture-diagram-generator -a codex -a cursor   # chosen agents only
 ```
-/plugin marketplace add ythalorossy/architecture-diagram-generator
-/plugin install architecture-diagram-generator@ythalorossy
-```
 
-To update later: `/plugin marketplace update ythalorossy`.
+It symlinks one copy into each agent's skills folder (`.agents/skills/`, `~/.codex/skills/`, `~/.cursor/skills/`, `~/.config/opencode/skills/`, `~/.gemini/skills/`, `~/.copilot/skills/`, …). Add `--copy` for independent copies. Update later with `npx skills update`.
 
-**Without the plugin system:** copy `skills/architecture-diagram-generator/` into `~/.claude/skills/`.
+### Through the agent's own installer
+
+| Agent | Install |
+|---|---|
+| Claude Code | `/plugin marketplace add ythalorossy/architecture-diagram-generator` then `/plugin install architecture-diagram-generator@ythalorossy`. Update: `/plugin marketplace update ythalorossy` |
+| Codex | `codex plugin marketplace add ythalorossy/architecture-diagram-generator`, then `/plugins` → *architecture-diagram-generator* → Install |
+| Cursor | Clone the repo into `~/.cursor/plugins/local/architecture-diagram-generator` and reload the window, or import the repo as a team marketplace |
+| Gemini CLI | `gemini extensions install https://github.com/ythalorossy/architecture-diagram-generator`. Update: `gemini extensions update architecture-diagram-generator` |
+| GitHub Copilot CLI | `copilot plugin marketplace add ythalorossy/architecture-diagram-generator` then `copilot plugin install architecture-diagram-generator@ythalorossy` |
+| OpenCode | In `opencode.json`: `"plugin": ["architecture-diagram-generator@git+https://github.com/ythalorossy/architecture-diagram-generator.git"]` (`"plugins"` on OpenCode 2.0.4+), then restart |
+| pi | `pi install git:github.com/ythalorossy/architecture-diagram-generator` |
+
+### Manual
+
+Copy `skills/architecture-diagram-generator/` into your agent's skills folder (for example `~/.claude/skills/`, `~/.codex/skills/`, `~/.agents/skills/`).
 
 ## Requirements
 
 | Tool | Required? | Version | Used for |
 |---|---|---|---|
-| [Claude Code](https://claude.com/claude-code) | Yes | any recent | runs the skill |
+| An agent that reads [Agent Skills](https://agentskills.io) (Claude Code, Codex, Cursor, Gemini CLI, OpenCode, Copilot CLI, pi, …) | Yes | any recent | runs the skill |
 | Python | Yes | **3.11+** | the analyzer (standard library only, no `pip install`) |
 | Node.js | Optional | **22.13+** | rendering the diagrams to SVG with [`@mermaid-js/mermaid-cli`](https://github.com/mermaid-js/mermaid-cli) |
 
@@ -59,7 +76,7 @@ python3 --version
 
 If your system Python is older, install a newer one with your package manager, [python.org](https://www.python.org/downloads/), or `uv python install 3.12`.
 
-> **Windows:** the skill calls `python3`. If only `python` or `py` is on your PATH, install Python from python.org or the Microsoft Store, which provides `python3`, or ask Claude to use `py -3`.
+> **Windows:** the skill calls `python3`. If only `python` or `py` is on your PATH, install Python from python.org or the Microsoft Store, which provides `python3`, or ask the agent to use `py -3`.
 
 ### Node.js and mermaid-cli (optional, for the SVG)
 
@@ -81,7 +98,7 @@ Without Node.js the analysis still works. The report then contains only the Merm
 
 ## Usage
 
-Ask Claude, for example:
+Ask your agent, for example:
 
 - *"Generate C4 diagrams for ~/src/my-repo"*
 - *"Generate an architecture diagram for ~/src/my-repo"*
@@ -104,7 +121,7 @@ Output files:
 - `c4-facts.json`, `c4-container.mmd` / `.svg`, `c4-component-<container>.mmd` / `.svg`
 - `dependency-graph.mmd` / `.svg` / `.json`, `repository-scan.json`, `summary.json`
 
-Run on its own, the analyzer draws the Container and Component levels from code facts only. Through the skill, Claude also writes `c4-model.json` (people, external systems, descriptions, each backed by evidence or marked as an assumption) and draws the System Context level. You can edit `c4-model.json` and redraw every diagram:
+Run on its own, the analyzer draws the Container and Component levels from code facts only. Through the skill, the agent also writes `c4-model.json` (people, external systems, descriptions, each backed by evidence or marked as an assumption) and draws the System Context level. You can edit `c4-model.json` and redraw every diagram:
 
 ```bash
 python3 skills/architecture-diagram-generator/scripts/render_c4.py ./architecture-docs/<repo name>
@@ -115,12 +132,25 @@ The model format is described in [`assets/c4-model-reference.md`](skills/archite
 ## Layout
 
 ```
-.claude-plugin/            plugin and marketplace manifests
 skills/architecture-diagram-generator/
-  SKILL.md                 instructions Claude follows
-  scripts/                 analyzer (one module per ecosystem)
+  SKILL.md                 instructions the agent follows (Agent Skills format)
+  scripts/                 analyzer (one module per ecosystem), C4 facts and renderer
   assets/                  report template, C4 model reference, review checklist, and templates for the system-overview and per-service docs
 ```
+
+The same skill is wrapped once per agent installer; every manifest points at `skills/`:
+
+```
+.claude-plugin/            Claude Code plugin + marketplace (the marketplace file is also read by Copilot CLI)
+.codex-plugin/             Codex plugin manifest
+.agents/plugins/           Codex marketplace manifest
+.cursor-plugin/            Cursor plugin manifest
+plugin.json                Agent Plugins 1.0 manifest (Cursor, Copilot CLI)
+gemini-extension.json      Gemini CLI extension
+package.json, index.js     OpenCode plugin (registers skills/) and pi package
+```
+
+**Releasing:** the version is repeated in `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `plugin.json`, `.cursor-plugin/plugin.json`, `.codex-plugin/plugin.json`, `gemini-extension.json`, `package.json`, the `SKILL.md` metadata and `scripts/generate_docs.py`. Bump them together.
 
 ## License
 

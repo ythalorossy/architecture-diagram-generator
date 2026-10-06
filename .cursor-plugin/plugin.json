@@ -1,5 +1,6 @@
 {
   "name": "architecture-diagram-generator",
+  "displayName": "Architecture Diagram Generator",
   "version": "2.1.0",
   "description": "Analyze a local repository (.NET, Node.js/TypeScript, Python, Java Maven/Gradle) and generate C4 model diagrams (context, container, component), an architecture report, and evidence-based recommendations.",
   "author": {

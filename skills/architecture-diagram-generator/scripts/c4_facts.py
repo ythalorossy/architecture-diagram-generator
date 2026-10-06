@@ -8,7 +8,7 @@ Facts for the C4 diagrams: what a script can find without judgement.
 - components: per container, the projects/modules it is built from and the
   edges between them (the dependency graph, minus tests).
 
-Every item carries `evidence` (repo-relative file:line) so the C4 model Claude
+Every item carries `evidence` (repo-relative file:line) so the C4 model the agent
 writes on top of it can be checked. People and the purpose of each element
 are left to that model.
 """

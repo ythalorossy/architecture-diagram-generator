@@ -1,6 +1,6 @@
 # c4-model.json reference
 
-`c4-model.json` holds the parts of the C4 model that need judgement: who uses the system, what each external system is for, and a one-line description of every element. `render_c4.py` draws the diagrams from it, combined with the facts in `c4-facts.json`.
+`c4-model.json`, written by the agent, holds the parts of the C4 model that need judgement: who uses the system, what each external system is for, and a one-line description of every element. `render_c4.py` draws the diagrams from it, combined with the facts in `c4-facts.json`.
 
 ## Shape
 
@@ -23,5 +23,7 @@
 `analyze_repository.py` never overwrites `c4-model.json`. When the code changes, the facts are refreshed, and if the model no longer covers them the analyzer draws facts-only diagrams and prints `C4 MODEL ERROR` lines. Update the model, then run:
 
 ```bash
-python3 "<skill_base_directory>/scripts/render_c4.py" <output folder>
+python3 scripts/render_c4.py <output folder>
 ```
+
+(`scripts/` is relative to the skill folder.)

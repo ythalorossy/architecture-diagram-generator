@@ -1,4 +1,5 @@
 {
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "architecture-diagram-generator",
   "version": "2.1.0",
   "description": "Analyze a local repository (.NET, Node.js/TypeScript, Python, Java Maven/Gradle) and generate C4 model diagrams (context, container, component), an architecture report, and evidence-based recommendations.",
@@ -9,6 +10,5 @@
   "homepage": "https://github.com/ythalorossy/architecture-diagram-generator",
   "repository": "https://github.com/ythalorossy/architecture-diagram-generator",
   "license": "MIT",
-  "keywords": ["architecture", "c4-model", "dependency-graph", "mermaid", "documentation"],
-  "skills": "./skills/"
+  "keywords": ["architecture", "c4-model", "dependency-graph", "mermaid", "documentation"]
 }
