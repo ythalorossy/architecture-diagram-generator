@@ -1,11 +1,11 @@
 ---
-name: architecture-diagram-generator
+name: c4-diagrams
 description: Use when the user asks for architecture documentation, C4 diagrams, a dependency graph or diagram, an architecture review, or an explanation of how a repository's projects, packages or modules fit together. Works on local repository paths (.NET, Java/Kotlin, Go, Node.js/TypeScript, Python).
 license: MIT
 compatibility: Requires python3 (3.11+). Node.js with @mermaid-js/mermaid-cli is optional, for SVG rendering.
 metadata:
   author: ythalorossy
-  version: "2.2.0"
+  version: "3.0.0"
 ---
 
 # Architecture Diagram Generator

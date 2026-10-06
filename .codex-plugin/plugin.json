@@ -1,25 +1,37 @@
 {
-  "name": "architecture-diagram-generator",
-  "version": "2.2.0",
-  "description": "Analyze a local repository (.NET, Java/Kotlin, Go, Node.js/TypeScript, Python) and generate C4 model diagrams (context, container, component, code), key-flow, deployment, API and configuration views, and evidence-based recommendations.",
+  "name": "architecture-skills",
+  "version": "3.0.0",
+  "description": "Agent skills for software architecture. c4-diagrams analyzes a local repository (.NET, Java/Kotlin, Go, Node.js/TypeScript, Python) and generates C4 model diagrams (context, container, component, code), key-flow, deployment, API and configuration views, and evidence-based recommendations.",
   "author": {
     "name": "Ythalo Saldanha",
     "url": "https://github.com/ythalorossy"
   },
-  "homepage": "https://github.com/ythalorossy/architecture-diagram-generator",
-  "repository": "https://github.com/ythalorossy/architecture-diagram-generator",
+  "homepage": "https://github.com/ythalorossy/architecture-skills",
+  "repository": "https://github.com/ythalorossy/architecture-skills",
   "license": "MIT",
-  "keywords": ["architecture", "c4-model", "dependency-graph", "mermaid", "documentation"],
+  "keywords": [
+    "architecture",
+    "c4-model",
+    "dependency-graph",
+    "mermaid",
+    "documentation"
+  ],
   "skills": "./skills/",
   "hooks": {},
   "interface": {
-    "displayName": "Architecture Diagram Generator",
+    "displayName": "Architecture Skills",
     "shortDescription": "C4 diagrams and an architecture report for a local repository",
     "longDescription": "Analyze a .NET, Node.js/TypeScript, Python or Java repository and produce C4 model diagrams (system context, containers, components), a Markdown architecture report with the full dependency graph, and recommendations backed by evidence from the code.",
     "developerName": "Ythalo Saldanha",
     "category": "Developer Tools",
-    "capabilities": ["Read", "Write"],
-    "defaultPrompt": ["Generate C4 architecture diagrams for this repository.", "Review the architecture of this repository."],
-    "websiteURL": "https://github.com/ythalorossy/architecture-diagram-generator"
+    "capabilities": [
+      "Read",
+      "Write"
+    ],
+    "defaultPrompt": [
+      "Generate C4 architecture diagrams for this repository.",
+      "Review the architecture of this repository."
+    ],
+    "websiteURL": "https://github.com/ythalorossy/architecture-skills"
   }
 }

@@ -1,5 +1,5 @@
 {
-  "name": "architecture-diagram-generator",
-  "version": "2.2.0",
-  "description": "C4 model diagrams, an architecture report and a dependency graph for a local repository (.NET, Java/Kotlin, Go, Node.js/TypeScript, Python)."
+  "name": "architecture-skills",
+  "version": "3.0.0",
+  "description": "Agent skills for software architecture: C4 diagrams, key flows, deployment, API and configuration views for a local repository."
 }

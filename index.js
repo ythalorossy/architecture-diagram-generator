@@ -1,7 +1,7 @@
 // OpenCode plugin entry point. It only registers the skills/ folder, so
 // OpenCode's native `skill` tool can load the skill. Nothing else runs.
 //
-// opencode.json:  "plugin":  ["architecture-diagram-generator@git+https://github.com/ythalorossy/architecture-diagram-generator.git"]   (V1)
+// opencode.json:  "plugin":  ["architecture-skills@git+https://github.com/ythalorossy/architecture-skills.git"]   (V1)
 //                 "plugins": [same]                                                                                                  (V2, 2.0.4+)
 import fs from "fs";
 import path from "path";
@@ -40,7 +40,7 @@ function loadSkills() {
 }
 
 // OpenCode V1: add the folder to `skills.paths`, and the host discovers SKILL.md itself.
-export const ArchitectureDiagramGeneratorPlugin = async () => ({
+export const ArchitectureSkillsPlugin = async () => ({
   config: async (config) => {
     if (Array.isArray(config.skills)) return;
     config.skills = config.skills || {};
@@ -61,14 +61,14 @@ async function setup(ctx) {
       try {
         draft.add(skill);
       } catch (err) {
-        console.error(`[architecture-diagram-generator] skill "${skill.id}" rejected by host:`, err);
+        console.error(`[architecture-skills] skill "${skill.id}" rejected by host:`, err);
       }
     }
   });
 }
 
 export default {
-  id: "architecture-diagram-generator",
-  server: ArchitectureDiagramGeneratorPlugin,
+  id: "architecture-skills",
+  server: ArchitectureSkillsPlugin,
   setup,
 };

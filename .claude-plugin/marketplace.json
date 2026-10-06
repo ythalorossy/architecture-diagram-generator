@@ -7,10 +7,10 @@
   },
   "plugins": [
     {
-      "name": "architecture-diagram-generator",
+      "name": "architecture-skills",
       "source": "./",
-      "version": "2.2.0",
-      "description": "C4 diagrams, architecture report and dependency graph for a local repository."
+      "version": "3.0.0",
+      "description": "Agent skills for software architecture: C4 diagrams, key flows, deployment, API and configuration views for a local repository."
     }
   ]
 }
