@@ -109,10 +109,14 @@ def render_svg(mermaid_file, svg_file, timeout=180):
     import shutil
     import subprocess
 
-    if shutil.which("mmdc"):
-        command = ["mmdc"]
-    elif shutil.which("npx"):
-        command = ["npx", "-y", "@mermaid-js/mermaid-cli"]
+    # Use the full path from shutil.which(): on Windows these are .cmd shims
+    # (npx.cmd, mmdc.cmd) that subprocess can't start by bare name.
+    mmdc = shutil.which("mmdc")
+    npx = shutil.which("npx")
+    if mmdc:
+        command = [mmdc]
+    elif npx:
+        command = [npx, "-y", "@mermaid-js/mermaid-cli"]
     else:
         return False
 
