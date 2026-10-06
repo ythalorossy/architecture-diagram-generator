@@ -6,7 +6,13 @@ Facts for the C4 diagrams: what a script can find without judgement.
 - data_stores: databases, caches, queues and vector stores the code connects to;
 - external_systems: third-party APIs reached through an SDK or an HTTP client;
 - components: per container, the projects/modules it is built from and the
-  edges between them (the dependency graph, minus tests).
+  edges between them (the dependency graph, minus tests);
+- code_components: per container, the packages/namespaces inside those modules
+  and the imports between them (JVM, C#, Go);
+- relationships: links between containers and stores found in compose
+  depends_on and front-end dev-server proxies;
+- endpoints, deployment, configuration and a per-container inventory
+  (see code_facts.py).
 
 Every item carries `evidence` (repo-relative file:line) so the C4 model the agent
 writes on top of it can be checked. People and the purpose of each element
@@ -23,14 +29,16 @@ try:
     from scripts.projects import discover_all
     from scripts.python_projects import _distributions, normalize, _python_files
     from scripts.generate_docs import is_test_project
+    from scripts import code_facts, go_projects
 except ImportError:
+    import code_facts, go_projects
     from dotnet_projects import walk_files, local_tag, is_ignored_dir
     from projects import discover_all
     from python_projects import _distributions, normalize, _python_files
     from generate_docs import is_test_project
 
 
-SOURCE_EXTENSIONS = (".cs", ".fs", ".vb", ".py", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".java", ".kt")
+SOURCE_EXTENSIONS = (".cs", ".fs", ".vb", ".py", ".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx", ".java", ".kt", ".go")
 TEST_DIRS = {"test", "tests", "__tests__", "spec", "specs", "e2e"}
 MAX_EVIDENCE = 3
 
@@ -80,6 +88,14 @@ CODE_SIGNALS = [
     (r"\bnew\s+BlobServiceClient\s*\(", "store", "Azure Blob Storage"),
     (r"\bnew\s+ServiceBusClient\s*\(", "store", "Azure Service Bus"),
     (r"\bnew\s+AmazonS3Client\s*\(", "store", "Amazon S3"),
+    # JVM (Spring Data and common clients)
+    (r"\b(?:StringRedisTemplate|RedisTemplate|ReactiveRedisTemplate|RedisConnectionFactory|LettuceConnectionFactory|JedisPool|RedissonClient)\b", "store", "Redis"),
+    (r"\b(?:MongoTemplate|MongoRepository|ReactiveMongoTemplate)\b", "store", "MongoDB"),
+    (r"\bKafkaTemplate\b|@KafkaListener\b", "store", "Kafka"),
+    (r"\bRabbitTemplate\b|@RabbitListener\b", "store", "RabbitMQ"),
+    (r"\bElasticsearchOperations\b|\bElasticsearchClient\b", "store", "Elasticsearch"),
+    (r"\bS3Client\.builder\(|\bAmazonS3ClientBuilder\b", "store", "Amazon S3"),
+    (r"\bSqsClient\b|@SqsListener\b", "store", "Amazon SQS"),
 ]
 
 # Imported module / package name -> (kind, technology) for Python and Node.js.
@@ -107,6 +123,16 @@ IMPORT_SIGNALS = {
     "@sentry/node": ("external", "Sentry"), "@sentry/react": ("external", "Sentry"), "sentry_sdk": ("external", "Sentry"),
     "applicationinsights": ("external", "Azure Application Insights"), "dd-trace": ("external", "Datadog"),
     "ddtrace": ("external", "Datadog"), "newrelic": ("external", "New Relic"),
+    # Go (matched as an import-path prefix)
+    "github.com/lib/pq": ("store", "PostgreSQL"), "github.com/jackc/pgx": ("store", "PostgreSQL"),
+    "github.com/go-sql-driver/mysql": ("store", "MySQL"), "github.com/mattn/go-sqlite3": ("store", "SQLite"),
+    "modernc.org/sqlite": ("store", "SQLite"), "github.com/microsoft/go-mssqldb": ("store", "SQL Server"),
+    "github.com/redis/go-redis": ("store", "Redis"), "github.com/go-redis/redis": ("store", "Redis"),
+    "go.mongodb.org/mongo-driver": ("store", "MongoDB"), "github.com/segmentio/kafka-go": ("store", "Kafka"),
+    "github.com/IBM/sarama": ("store", "Kafka"), "github.com/rabbitmq/amqp091-go": ("store", "RabbitMQ"),
+    "github.com/nats-io/nats.go": ("store", "NATS"), "github.com/elastic/go-elasticsearch": ("store", "Elasticsearch"),
+    "github.com/aws/aws-sdk-go": ("external", "AWS"), "github.com/aws/aws-sdk-go-v2": ("external", "AWS"),
+    "github.com/stripe/stripe-go": ("external", "Stripe"), "github.com/getsentry/sentry-go": ("external", "Sentry"),
 }
 
 # NuGet / Maven package prefixes -> (kind, technology).
@@ -130,7 +156,10 @@ COMPOSE_STORES = [
     ("minio", "MinIO"), ("memcached", "Memcached"), ("qdrant", "Qdrant"), ("chroma", "Chroma"),
 ]
 
-HTTP_CLIENT = re.compile(r"\bHttpClient\b|\brequests\.|\bhttpx\b|\baiohttp\b|\baxios\b|\bfetch\(|\bRestTemplate\b|\bWebClient\b|\bOkHttp")
+HTTP_CLIENT = re.compile(
+    r"\bHttpClient\b|\bRestClient\b|\bFeignClient\b|\bHttpURLConnection\b|\brequests\.|\bhttpx\b|\baiohttp\b|\burllib\b|"
+    r"\baxios\b|\bfetch\(|\bky\b|\bgot\(|\bRestTemplate\b|\bWebClient\b|\bOkHttp|\bhttp\.(?:Get|Post|NewRequest)|\bresty\b"
+)
 URL = re.compile(r"""https?://([A-Za-z0-9.-]+\.[A-Za-z]{2,})""")
 IGNORED_HOSTS = re.compile(
     r"(^|\.)(localhost|example\.(com|org)|w3\.org|json-schema\.org|schemas\.[a-z.]+|xmlsoap\.org|"
@@ -169,6 +198,12 @@ def _source_files(repo, test_dirs):
             continue
         files.append(file.resolve())
     return files
+
+
+def _in_string(text, index):
+    """True when index sits inside a quoted string on its line (a pattern table, a log message...)."""
+    line = text[text.rfind("\n", 0, index) + 1:index]
+    return line.count('"') % 2 == 1 or line.count("'") % 2 == 1
 
 
 def _strip_json_comments(text):
@@ -366,6 +401,14 @@ def _java_containers(repo, projects):
             kinds.setdefault("app", "Java application")
         if not kinds:
             continue
+        # A module that only depends on Spring (a library) is not a container:
+        # it needs a main class or a packaging plugin.
+        module_dir = path.parent if path.is_file() else path
+        if not (
+            re.search(r"spring-boot-maven-plugin|quarkus-maven-plugin|micronaut-maven-plugin|<packaging>\s*war|org\.springframework\.boot['\"]?\)?\s*version|id\s*\(?\s*['\"]application", text)
+            or _has_jvm_main(module_dir)
+        ):
+            continue
         containers.append({
             "name": project["id"],
             "kind": " + ".join(kinds),
@@ -375,6 +418,57 @@ def _java_containers(repo, projects):
             "evidence": [f"{project['relative_path']}: {', '.join(kinds.values())}"],
         })
     return containers
+
+
+def _has_jvm_main(module_dir):
+    for file in walk_files(module_dir, lambda n: n.endswith((".java", ".kt"))):
+        if any(part in TEST_DIRS for part in file.relative_to(module_dir).parts[:-1]):
+            continue
+        text = _read(file)
+        if "@SpringBootApplication" in text or "@QuarkusMain" in text or re.search(r"\bstatic\s+void\s+main\s*\(|^fun\s+main\s*\(", text, re.MULTILINE):
+            return True
+    return False
+
+
+def _go_containers(repo):
+    containers = []
+    for directory, module, kind, technology in go_projects.main_packages(repo):
+        relative = _rel(repo, directory)
+        name = directory.name if directory != module["dir"] else module["path"].rsplit("/", 1)[-1]
+        containers.append({
+            "name": name, "kind": kind, "technology": technology,
+            "path": relative, "root": directory,
+            "evidence": [f"{relative}: package main ({technology})"],
+        })
+    return containers
+
+
+def _yaml_urls(text):
+    """(setting path, host, line) for URL values in YAML or .properties text, tracking the key path by indentation."""
+    found, stack = [], []
+    for number, line in enumerate(text.splitlines(), 1):
+        stripped = line.strip()
+        if not stripped or stripped.startswith(("#", "!")):
+            continue
+        prop = re.match(r"^([\w.\-\[\]]+)\s*[=:]\s*(\S.*)$", stripped) if "=" in stripped and ":" not in stripped.split("=")[0] else None
+        if prop:
+            keys, value = prop.group(1).split("."), prop.group(2)
+        else:
+            m = re.match(r"^(-\s*)?([\w.\-\"']+)\s*:\s*(.*)$", stripped)
+            if not m:
+                continue
+            indent = len(line) - len(line.lstrip())
+            while stack and stack[-1][0] >= indent:
+                stack.pop()
+            key = m.group(2).strip("\"'")
+            if not m.group(3) or m.group(3).startswith(("|", ">")):
+                stack.append((indent, key))
+                continue
+            keys, value = [k for _, k in stack] + [key], m.group(3)
+        url = URL.match(value.strip().strip("\"'").split("${")[-1].split(":", 1)[-1] if value.strip().startswith("${") else value.strip().strip("\"'"))
+        if url and not IGNORED_HOSTS.search(url.group(1).lower()):
+            found.append((".".join(keys), url.group(1).lower(), number))
+    return found
 
 
 def _compose_services(repo):
@@ -460,7 +554,11 @@ def _components(repo, container, projects, graph, all_containers):
                 continue
             nodes.append(node)
 
-    nodes = [n for n in nodes if not is_test_project(n)]
+    nodes = [
+        n for n in nodes
+        if not is_test_project(n)
+        and not any(part.lower() in TEST_DIRS for part in Path(by_id[n]["relative_path"]).parts)
+    ]
     node_set = set(nodes)
     return {
         "nodes": {
@@ -495,11 +593,11 @@ def collect_facts(repo_path, graph):
         + _python_containers(repo)
         + _node_containers(repo)
         + _java_containers(repo, projects)
+        + _go_containers(repo)
     )
 
     stores, externals = {}, {}
-
-    compose_stores = []
+    compose_stores, compose_map = [], {}
 
     # docker-compose: build services are (or confirm) containers; known images are data stores.
     for service in _compose_services(repo):
@@ -508,21 +606,35 @@ def collect_facts(repo_path, graph):
         store = next((tech for key, tech in COMPOSE_STORES if key in image.split(":")[0]), None)
         if store:
             compose_stores.append((store, service))
+            compose_map[service["name"]] = ("store", store)
         elif service["build"]:
             context = (service["file"].parent / service["build"]).resolve()
-            match = next((c for c in containers if (repo / c["path"]).resolve() == context), None)
-            if match:
-                match["evidence"].append(f"{evidence} (compose service {service['name']})")
-            elif context.is_relative_to(repo):
-                containers.append({
+            match = next((c for c in containers if c["path"] and (repo / c["path"]).resolve() == context), None)
+            if match is None:
+                # Build context is a parent folder (a Maven/Gradle/.NET multi-module root):
+                # pick the runnable container below it, preferring a web API.
+                inside = [c for c in containers if c["path"] and (repo / c["path"]).resolve().is_relative_to(context)]
+                dockerfile = _read(context / "Dockerfile")
+                mentioned = [c for c in inside if Path(c["path"]).name in dockerfile] or inside
+                web = [c for c in mentioned if "web-api" in c["kind"]]
+                match = (web or mentioned or [None])[0]
+            if match is None and context.is_relative_to(repo):
+                match = {
                     "name": service["name"], "kind": "service", "technology": "Docker",
-                    "path": _rel(repo, context) if context != repo else ".", "root": None, "evidence": [evidence],
-                })
+                    "path": _rel(repo, context) if context != repo else ".", "root": None, "evidence": [],
+                }
+                containers.append(match)
+            if match is not None:
+                match["evidence"].append(f"{evidence} (compose service {service['name']})")
+                match.setdefault("compose_services", []).append(service["name"])
+                compose_map[service["name"]] = ("container", match)
         elif image:
-            containers.append({
+            match = {
                 "name": service["name"], "kind": "service", "technology": image,
-                "path": None, "root": None, "evidence": [evidence],
-            })
+                "path": None, "root": None, "evidence": [evidence], "compose_services": [service["name"]],
+            }
+            containers.append(match)
+            compose_map[service["name"]] = ("container", match)
 
     # Nothing runnable found: treat the whole repository as one container, so
     # the component level still has a home.
@@ -534,9 +646,13 @@ def collect_facts(repo_path, graph):
 
     used_ids = set()
     for container in containers:
-        base = slug(container["name"])
-        container["id"] = base if base not in used_ids else f"{base}-{len(used_ids)}"
-        used_ids.add(container["id"])
+        # "Submission.API (articles/src/...)" -> submission-api, then -2, -3 on collision.
+        base = slug(re.sub(r"\s*\(.*\)$", "", container["name"]))
+        candidate, number = base, 2
+        while candidate in used_ids:
+            candidate, number = f"{base}-{number}", number + 1
+        container["id"] = candidate
+        used_ids.add(candidate)
 
     runnable = [c for c in containers if c["path"] is not None]
     _container_scopes(repo, runnable, projects, graph)
@@ -556,9 +672,16 @@ def collect_facts(repo_path, graph):
                 result.append((container["id"], _owner_component(file, container["components"], by_id)))
         return result
 
+    def owner_container(file):
+        found = owners(Path(file).resolve())
+        # Most specific container: the one whose own folder holds the file.
+        found.sort(key=lambda o: -len((repo / next(c for c in runnable if c["id"] == o[0])["path"]).resolve().parts))
+        return found[0][0] if found else None
+
     def record(registry, key, entry, file, line):
         found = owners(file)
         item = registry.setdefault(key, entry)
+        item.setdefault("files", set()).add(Path(file).resolve())
         evidence = f"{_rel(repo, file)}:{line}"
         # One line per file is enough evidence.
         if not any(e.split(":")[0] == evidence.split(":")[0] for e in item["evidence"]):
@@ -581,11 +704,12 @@ def collect_facts(repo_path, graph):
     for technology, service in compose_stores:
         record(stores, technology, new_entry(technology), service["file"].resolve(), service["line"])
 
-    for file in _source_files(repo, test_dirs):
+    source_files = _source_files(repo, test_dirs)
+    for file in source_files:
         text = _read(file)
 
         for pattern, kind, technology in CODE_SIGNALS:
-            match = re.search(pattern, text)
+            match = next((m for m in re.finditer(pattern, text) if not _in_string(text, m.start())), None)
             if match:
                 record(stores if kind == "store" else externals, technology, new_entry(technology), file, _line_of(text, match.start()))
 
@@ -593,12 +717,17 @@ def collect_facts(repo_path, graph):
             imports = [(m.group(1) or m.group(2), m.start()) for m in PY_IMPORT.finditer(text)]
         elif file.suffix in (".js", ".mjs", ".cjs", ".jsx", ".ts", ".tsx"):
             imports = [(m.group(1), m.start()) for m in JS_IMPORT.finditer(text)]
+        elif file.suffix == ".go":
+            imports = [(name, max(text.find(f'"{name}"'), 0)) for name in code_facts.go_imports(text)]
         else:
             imports = []
         for module, index in imports:
-            parts = module.split("/") if "/" in module else module.split(".")
-            candidates = [module, parts[0], "/".join(parts[:2]) if module.startswith("@") else ".".join(parts[:2])]
-            hit = next((IMPORT_SIGNALS[c] for c in candidates if c in IMPORT_SIGNALS), None)
+            if file.suffix == ".go":
+                hit = next((v for k, v in IMPORT_SIGNALS.items() if "/" in k and "." in k.split("/")[0] and (module == k or module.startswith(k + "/"))), None)
+            else:
+                parts = module.split("/") if "/" in module else module.split(".")
+                candidates = [module, parts[0], "/".join(parts[:2]) if module.startswith("@") else ".".join(parts[:2])]
+                hit = next((IMPORT_SIGNALS[c] for c in candidates if c in IMPORT_SIGNALS), None)
             if hit:
                 kind, technology = hit
                 record(stores if kind == "store" else externals, technology, new_entry(technology), file, _line_of(text, index))
@@ -619,43 +748,151 @@ def collect_facts(repo_path, graph):
             if match:
                 record(stores if kind == "store" else externals, technology, new_entry(technology), project["path"], _line_of(text, match.start()))
 
-    # URLs in appsettings*.json: one external system per setting, so a per-state or
-    # per-region map of URLs ("PaymentsUrl": {"eu": ..., "us": ...}) is one box.
+    # URLs in config files. A setting that holds one host becomes that host; a
+    # setting that maps to several hosts (per state, per year) stays one box
+    # named after the setting.
+    config_urls = {}
     for file in walk_files(repo, lambda name: re.match(r"appsettings.*\.json$", name)):
         text = _read(file)
         for setting, host in _config_urls(text):
-            index = text.find(host)
-            entry = new_entry(setting)
-            item = registry_get(externals, setting, entry)
-            item.setdefault("hosts", set()).add(host)
-            record(externals, setting, entry, file.resolve(), _line_of(text, max(index, 0)))
+            config_urls.setdefault(setting, []).append((host, file, _line_of(text, max(text.find(host), 0))))
+    for file in walk_files(repo, lambda name: re.match(r"(application|bootstrap)[\w-]*\.(ya?ml|properties)$|^config\.ya?ml$|^settings\.ya?ml$", name)):
+        if any(part in TEST_DIRS for part in file.relative_to(repo).parts[:-1]):
+            continue
+        for setting, host, line in _yaml_urls(_read(file)):
+            keys = [k for k in setting.split(".") if k.lower() not in ("url", "uri", "base-url", "baseurl", "base_url", "api-url", "endpoint", "host")]
+            config_urls.setdefault(".".join(keys[-2:]) or setting, []).append((host, file, line))
+    for setting, hits in config_urls.items():
+        hosts = sorted({h for h, _, _ in hits})
+        key = hosts[0] if len(hosts) == 1 else setting
+        entry = new_entry(key)
+        item = registry_get(externals, key, entry)
+        item.setdefault("hosts", set()).update(hosts)
+        if len(hosts) == 1:
+            item.setdefault("settings", set()).add(setting)
+        for host, file, line in hits:
+            record(externals, key, entry, file.resolve(), line)
 
     def finish(registry, prefix):
         items = []
         for key, item in sorted(registry.items()):
+            hosts = sorted(item.get("hosts") or [])
+            technology = item["technology"]
+            if len(hosts) > 1:
+                technology = ", ".join(hosts[:3]) + (" …" if len(hosts) > 3 else "")
+            elif hosts and item.get("settings"):
+                technology = "setting " + ", ".join(sorted(item["settings"]))
             items.append({
                 "id": f"{prefix}-{slug(key)}",
                 "name": key,
-                "technology": ", ".join(sorted(item["hosts"])[:3]) + (" …" if len(item["hosts"]) > 3 else "") if item.get("hosts") else item["technology"],
+                "technology": technology,
                 "evidence": item["evidence"],
                 "used_by": sorted(item["used_by"]),
                 "used_by_components": {c: sorted(v) for c, v in sorted(item["used_by_components"].items())},
+                "used_by_code": {
+                    c["id"]: sorted({c["code_components"]["_files"][f] for f in item.get("files", ()) if f in c["code_components"]["_files"]})
+                    for c in runnable
+                    if c.get("code_components") and any(f in c["code_components"]["_files"] for f in item.get("files", ()))
+                },
             })
         return items
+
+    # Inside each container: packages/namespaces of its modules (JVM, C#, Go).
+    for container in runnable:
+        module_dirs = {}
+        for node, info in container["components"]["nodes"].items():
+            project = by_id.get(node)
+            if project:
+                path = project["path"]
+                module_dirs[node] = (path.parent if path.is_file() else path).resolve()
+        if not module_dirs and container.get("path"):
+            module_dirs[container["name"]] = (repo / container["path"]).resolve()
+        container["code_components"] = code_facts.code_components(module_dirs)
+
+    data_stores = finish(stores, "db")
+    external_systems = finish(externals, "ext")
+
+    # Links between containers and stores that the code or config declares.
+    store_ids = {s["name"]: s["id"] for s in data_stores}
+    relationships = []
+
+    def element_of(service):
+        kind, value = compose_map.get(service, (None, None))
+        if kind == "store":
+            return store_ids.get(value)
+        return value["id"] if kind == "container" else None
+
+    services = code_facts.compose_services(repo)
+    for service in services:
+        source = element_of(service["name"])
+        for dependency in service["depends_on"]:
+            target = element_of(dependency)
+            if source and target and source != target:
+                relationships.append({
+                    "from": source, "to": target, "description": "Depends on",
+                    "technology": "", "evidence": [f"{service['file']}:{service['line']}"], "source": "compose depends_on",
+                })
+
+    web_apis = [c for c in runnable if "web-api" in c["kind"]]
+    host_ports = {}
+    for service in services:
+        _, value = compose_map.get(service["name"], (None, None))
+        if isinstance(value, dict):
+            for port in service["ports"]:
+                host_ports.setdefault(port.split(":")[0].strip("'\""), value["id"])
+    for prefix, target, file, line in code_facts.dev_proxies(repo):
+        source = owner_container(file)
+        port = re.search(r":(\d{2,5})", target)
+        backend = host_ports.get(port.group(1)) if port else None
+        if backend is None and port:
+            backend = next((c["id"] for c in web_apis if port.group(1) in code_facts.declared_ports(repo, (repo / c["path"]).resolve())), None)
+        if backend is None and len(web_apis) == 1:
+            backend = web_apis[0]["id"]
+        if source and backend and source != backend:
+            relationships.append({
+                "from": source, "to": backend, "description": f"Calls {prefix} (dev-server proxy to {target})",
+                "technology": "HTTP", "evidence": [f"{_rel(repo, file)}:{line}"], "source": "dev proxy",
+            })
+
+    unique = {}
+    for r in relationships:
+        key = (r["from"], r["to"], r["source"])
+        if key in unique:
+            unique[key]["evidence"] += [e for e in r["evidence"] if e not in unique[key]["evidence"]]
+        else:
+            unique[key] = r
+    relationships = list(unique.values())
+
+    deployment = code_facts.deployment(repo)
+    endpoints = code_facts.endpoints(repo, source_files, owner_container)
+    configuration = code_facts.configuration(repo, source_files, owner_container, services)
+
+    for container in runnable:
+        if container.get("code_components"):
+            container["code_components"].pop("_files", None)
+
+    for container in containers:
+        modules = [by_id[n]["path"] for n in (container.get("components") or {}).get("nodes", {}) if n in by_id]
+        container["inventory"] = code_facts.inventory(repo, container, modules) if container.get("path") else (
+            [container["technology"]] if container.get("technology") else []
+        )
 
     return {
         "repository": repo.name,
         "containers": [
             {
                 key: container.get(key)
-                for key in ("id", "name", "kind", "technology", "path", "evidence", "components")
+                for key in ("id", "name", "kind", "technology", "path", "evidence", "components", "code_components", "inventory", "compose_services")
             }
             for container in containers
         ],
-        "data_stores": finish(stores, "db"),
-        "external_systems": finish(externals, "ext"),
+        "data_stores": data_stores,
+        "external_systems": external_systems,
+        "relationships": relationships,
+        "endpoints": endpoints,
+        "deployment": deployment,
+        "configuration": configuration,
     }
-
 
 
 if __name__ == "__main__":

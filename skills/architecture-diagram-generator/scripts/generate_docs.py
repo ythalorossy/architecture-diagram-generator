@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import re
 
 
-GENERATOR_VERSION = "2.1"
+GENERATOR_VERSION = "2.2"
 
 ASSETS_DIR = (
     Path(__file__).parent.parent / "assets"

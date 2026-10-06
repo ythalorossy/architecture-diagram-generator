@@ -2,9 +2,9 @@ from functools import lru_cache
 from pathlib import Path
 
 try:
-    from scripts import dotnet_projects, node_projects, python_projects, java_projects
+    from scripts import dotnet_projects, node_projects, python_projects, java_projects, go_projects
 except ImportError:
-    import dotnet_projects, node_projects, python_projects, java_projects
+    import dotnet_projects, node_projects, python_projects, java_projects, go_projects
 
 
 def _dotnet(repo):
@@ -15,7 +15,7 @@ def _dotnet(repo):
     return discovery
 
 
-ECOSYSTEMS = (_dotnet, node_projects.discover_projects, python_projects.discover_projects, java_projects.discover_projects)
+ECOSYSTEMS = (_dotnet, node_projects.discover_projects, python_projects.discover_projects, java_projects.discover_projects, go_projects.discover_projects)
 
 
 @lru_cache(maxsize=8)

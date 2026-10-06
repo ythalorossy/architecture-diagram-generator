@@ -29,7 +29,8 @@ def detect_stack(repo_path):
         ".NET": (".sln", ".slnx", ".csproj", ".fsproj", ".vbproj"),
         "Node.js": ("package.json",),
         "Python": ("requirements.txt", "pyproject.toml", "setup.py"),
-        "Java": ("pom.xml", "build.gradle", "build.gradle.kts")
+        "Java": ("pom.xml", "build.gradle", "build.gradle.kts"),
+        "Go": ("go.mod",)
     }
 
     # One pass over the tree (build and dependency folders are skipped).

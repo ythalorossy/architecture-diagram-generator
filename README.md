@@ -1,14 +1,24 @@
 # architecture-diagram-generator
 
-An [Agent Skill](https://agentskills.io) that analyzes a local repository and produces [C4 model](https://c4model.com/) diagrams, an architecture report, and recommendations based on what the analysis found. It works in Claude Code, Codex, Cursor, Gemini CLI, OpenCode, GitHub Copilot CLI, pi and any other agent that reads `SKILL.md`.
+An [Agent Skill](https://agentskills.io) that analyzes a local repository and produces [C4 model](https://c4model.com/) diagrams, key-flow sequence diagrams, deployment, API and configuration views, and recommendations based on what the analysis found. It reads .NET, Java/Kotlin, Go, Node.js/TypeScript and Python code. It works in Claude Code, Codex, Cursor, Gemini CLI, OpenCode, GitHub Copilot CLI, pi and any other agent that reads `SKILL.md`.
 
 | C4 level | Shows | Where it comes from |
 |---|---|---|
 | 1 · System context | the system, its users, the external systems it talks to | the agent, from the code and docs, in an editable `c4-model.json` |
 | 2 · Containers | what runs on its own (web API, web app, worker, CLI) and its data stores | detected in project files, dependencies, EF Core/DB clients, docker-compose |
-| 3 · Components | each container's projects or modules and their dependencies | the dependency graph below, without tests |
+| 3 · Components | each container's modules, then the packages/namespaces inside them (Java/Kotlin packages, C# folders, Go packages) and their imports | the code, without tests; the agent describes the important ones |
+| Key flows | 1–3 important requests traced step by step as sequence diagrams | the agent, from the code, in `c4-model.json` |
 
-Each level is its own diagram, so no single picture has to show everything. Containers with more than 20 components are split by folder, and in dense graphs shortcut edges are hidden.
+The report also has sections built straight from the code:
+
+| Section | Contents |
+|---|---|
+| Deployment | docker-compose services and their dependencies (as a diagram), Dockerfiles (stages, runtime image, ports, entry point), Kubernetes workloads, CI and hosting files |
+| API endpoints | HTTP routes from Spring, JAX-RS, ASP.NET (controllers and minimal APIs), Express/Fastify/Koa/NestJS, FastAPI/Flask/Django, Go net/http, gin, echo and chi |
+| Configuration | environment variables the code reads or compose sets, with defaults, and the config files found |
+| Technology inventory | runtime, frameworks and key libraries with versions, per container |
+
+Each level is its own diagram, so no single picture has to show everything. Diagrams with more than 20 components are split by module or folder, and in dense graphs shortcut edges are hidden.
 
 The full dependency graph stays in an appendix:
 
@@ -19,6 +29,7 @@ The full dependency graph stays in an appendix:
 | Node.js / TypeScript single package | folders | imports (relative, tsconfig `baseUrl` / `paths`) |
 | Python | distributions, or subpackages/modules of a single package | requirements / `import` statements |
 | Maven / Gradle | modules / included projects | inter-module dependencies |
+| Go | modules (several `go.mod`), or package folders of one module (`cmd/x`, `internal/x`, …) | `require` lines / imports |
 
 The analysis also checks for dependency cycles, projects outside the solution or workspace, unresolved references, and modules that no test imports.
 
@@ -118,10 +129,10 @@ By default the files are written to `./architecture-docs/<repo name>/` in the cu
 Output files:
 
 - `ArchitectureReport.md`
-- `c4-facts.json`, `c4-container.mmd` / `.svg`, `c4-component-<container>.mmd` / `.svg`
+- `c4-facts.json`, `c4-container.*`, `c4-component-<container>.*` (modules), `c4-code-<container>.*` (packages/namespaces), `c4-deployment.*`, and with a model `c4-context.*` and `c4-flow-<flow>.*`
 - `dependency-graph.mmd` / `.svg` / `.json`, `repository-scan.json`, `summary.json`
 
-Run on its own, the analyzer draws the Container and Component levels from code facts only. Through the skill, the agent also writes `c4-model.json` (people, external systems, descriptions, each backed by evidence or marked as an assumption) and draws the System Context level. You can edit `c4-model.json` and redraw every diagram:
+Run on its own, the analyzer draws the Container and Component levels from code facts only. Through the skill, the agent also writes `c4-model.json` (people, external systems, component descriptions and key flows, each backed by evidence or marked as an assumption) and draws the System Context level and the flow diagrams. You can edit `c4-model.json` and redraw every diagram:
 
 ```bash
 python3 skills/architecture-diagram-generator/scripts/render_c4.py ./architecture-docs/<repo name>

@@ -1,7 +1,7 @@
 {
   "name": "architecture-diagram-generator",
-  "version": "2.1.0",
-  "description": "C4 model diagrams, an architecture report and a dependency graph for a local repository (.NET, Node.js/TypeScript, Python, Java).",
+  "version": "2.2.0",
+  "description": "C4 model diagrams, an architecture report and a dependency graph for a local repository (.NET, Java/Kotlin, Go, Node.js/TypeScript, Python).",
   "type": "module",
   "main": "index.js",
   "license": "MIT",

@@ -1,8 +1,8 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "architecture-diagram-generator",
-  "version": "2.1.0",
-  "description": "Analyze a local repository (.NET, Node.js/TypeScript, Python, Java Maven/Gradle) and generate C4 model diagrams (context, container, component), an architecture report, and evidence-based recommendations.",
+  "version": "2.2.0",
+  "description": "Analyze a local repository (.NET, Java/Kotlin, Go, Node.js/TypeScript, Python) and generate C4 model diagrams (context, container, component, code), key-flow, deployment, API and configuration views, and evidence-based recommendations.",
   "author": {
     "name": "Ythalo Saldanha",
     "url": "https://github.com/ythalorossy"
