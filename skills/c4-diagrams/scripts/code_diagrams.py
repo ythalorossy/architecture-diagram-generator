@@ -6,6 +6,7 @@ as Mermaid class diagrams.
 from difflib import get_close_matches
 from pathlib import Path
 import os
+import re
 
 try:
     from scripts import code_facts, code_types
@@ -99,6 +100,75 @@ def select_types(types, wanted=(), limit=MAX_TYPES):
     return chosen, sorted(set(types) - set(chosen))
 
 
+# One `style` line per box: mermaid-cli accepts classDef/cssClass in class diagrams but emits no CSS for them.
+COMPONENT_STYLE = "fill:#85bbf0,stroke:#5d82a8,color:#000000"
+SHARED_STYLE = "fill:#dbe9f6,stroke:#5d82a8,color:#000000,stroke-dasharray:4 3"
+STEREOTYPES = {"interface", "abstract", "enum", "record", "struct"}
+
+
+def _member(method):
+    """"Load(id) Task<List<Job>>" -> "+Load(id) Task~List~Job~~" (Mermaid generics; no parens or braces in the type)."""
+    head, _, ret = method.partition(")")
+    ret = re.sub(r"[(){}]", "", ret).strip().replace("<", "~").replace(">", "~").rstrip("*$")
+    return f"+{head})" + (f" {ret}" if ret else "")
+
+
+def _box(t):
+    members = list(t["values"]) if t["kind"] == "enum" else [_member(m) for m in t["methods"]]
+    extra = len(members) - MAX_MEMBERS
+    members = members[:MAX_MEMBERS] + ([f"… {extra} more"] if extra > 0 else [])
+    head = [f"<<{t['kind']}>>"] if t["kind"] in STEREOTYPES else []
+    if not head and not members:
+        return [f"    class {t['name']}"]
+    return [f"    class {t['name']} {{"] + [f"        {line}" for line in head + members] + ["    }"]
+
+
+def class_diagram(types, chosen):
+    """Mermaid classDiagram of the chosen types; base types from other components are drawn as external boxes."""
+    lines = ["---", "config:", "  class:", "    hideEmptyMembersBox: true", "---", "classDiagram", "    direction TB"]
+    external = []
+    for name in chosen:
+        t = types[name]
+        for parent in t["bases"] + t["interfaces"] + t["embeds"]:
+            if parent not in types and parent not in external:
+                external.append(parent)
+    for name in chosen:
+        lines += _box(types[name])
+    for name in external:
+        lines += [f"    class {name} {{", "        <<external>>", "    }"]
+    drawn = set(chosen) | set(external)
+    for name in chosen:
+        t = types[name]
+        lines += [f"    {b} <|-- {name}" for b in t["bases"] if b in drawn]
+        lines += [f"    {i} <|.. {name}" for i in t["interfaces"] if i in drawn]
+        lines += [f"    {name} *-- {e}" for e in t["embeds"] if e in drawn]
+        lines += [f"    {name} ..> {d}" for d in t["depends_on"] if d in chosen]
+    lines += [f"    style {name} {COMPONENT_STYLE}" for name in chosen]
+    lines += [f"    style {name} {SHARED_STYLE}" for name in external]
+    return "\n".join(lines) + "\n"
+
+
+def _relative(file, repo):
+    try:
+        return Path(file).relative_to(repo).as_posix()
+    except ValueError:
+        return Path(file).as_posix()
+
+
+def notes(entry):
+    """Report lines under a Level 4 diagram: where each drawn type is declared, and what was left out."""
+    sources = ", ".join(
+        f"{name} → `{_relative(entry['types'][name]['file'], entry['repo'])}:{entry['types'][name]['line']}`"
+        for name in entry["chosen"]
+    )
+    lines = [f"Sources: {sources}"]
+    left_out = entry["left_out"]
+    if left_out:
+        shown = ", ".join(left_out[:10]) + (", …" if len(left_out) > 10 else "")
+        lines.append(f"Not drawn: {len(left_out)} more type{'s' if len(left_out) > 1 else ''} ({shown})")
+    return lines
+
+
 def prepare(model, facts, output):
     """(errors, warnings, entries) for model["code"]; every entry is ready to draw."""
     code = model.get("code") or []
@@ -152,6 +222,6 @@ def prepare(model, facts, output):
             "title": f"{element['name']} · {item['component']}",
             "description": item.get("description", ""),
             "types": types, "chosen": chosen, "left_out": left_out, "repo": repo,
-            "mermaid": "",
+            "mermaid": class_diagram(types, chosen),
         })
     return errors, warnings, entries

@@ -145,3 +145,80 @@ class SelectTypesTest(unittest.TestCase):
         chosen, left_out = code_diagrams.select_types(types, ["C", "A"])
         self.assertEqual(chosen, ["C", "A", "B"])
         self.assertEqual(left_out, [])
+
+
+def typ(name, kind="class", **fields):
+    t = {"name": name, "kind": kind, "file": Path("/repo/src") / f"{name}.cs", "line": 3,
+         "bases": [], "interfaces": [], "embeds": [], "depends_on": [], "methods": [], "values": []}
+    t.update(fields)
+    return t
+
+
+EXPECTED = """---
+config:
+  class:
+    hideEmptyMembersBox: true
+---
+classDiagram
+    direction TB
+    class WorkflowConductor {
+        +Change(id) bool
+        +Load(id) Task~List~Job~~
+    }
+    class IClock {
+        <<interface>>
+        +Now() long
+    }
+    class IWorkflowConductor {
+        <<interface>>
+        +Change(id) bool
+    }
+    class Status {
+        <<enum>>
+        Ready
+        Done
+    }
+    class RepositoryBase {
+        <<external>>
+    }
+    RepositoryBase <|-- WorkflowConductor
+    IWorkflowConductor <|.. WorkflowConductor
+    WorkflowConductor ..> IClock
+    style WorkflowConductor fill:#85bbf0,stroke:#5d82a8,color:#000000
+    style IClock fill:#85bbf0,stroke:#5d82a8,color:#000000
+    style IWorkflowConductor fill:#85bbf0,stroke:#5d82a8,color:#000000
+    style Status fill:#85bbf0,stroke:#5d82a8,color:#000000
+    style RepositoryBase fill:#dbe9f6,stroke:#5d82a8,color:#000000,stroke-dasharray:4 3
+"""
+
+
+class ClassDiagramTest(unittest.TestCase):
+    def test_snapshot(self):
+        types = {
+            "IWorkflowConductor": typ("IWorkflowConductor", "interface", methods=["Change(id) bool"]),
+            "WorkflowConductor": typ("WorkflowConductor", bases=["RepositoryBase"], interfaces=["IWorkflowConductor"],
+                                     methods=["Change(id) bool", "Load(id) Task<List<Job>>"], depends_on=["IClock"]),
+            "IClock": typ("IClock", "interface", methods=["Now() long"]),
+            "Status": typ("Status", "enum", values=["Ready", "Done"]),
+        }
+        chosen = ["WorkflowConductor", "IClock", "IWorkflowConductor", "Status"]
+        self.assertEqual(code_diagrams.class_diagram(types, chosen), EXPECTED)
+
+    def test_member_cap_go_returns_and_embedding(self):
+        types = {
+            "Store": typ("Store", "struct", embeds=["Base"], methods=[f"M{i}() error" for i in range(10)]),
+            "Base": typ("Base", "struct", methods=["Get(ctx, id) (*Order, error)"]),
+        }
+        text = code_diagrams.class_diagram(types, ["Store", "Base"])
+        self.assertIn("        +M7() error\n        … 2 more\n", text)
+        self.assertNotIn("+M8()", text)
+        self.assertIn("+Get(ctx, id) *Order, error", text)
+        self.assertIn("    Store *-- Base\n", text)
+
+    def test_notes(self):
+        types = {"A": typ("A"), "B": typ("B")}
+        entry = {"types": types, "chosen": ["A"], "left_out": ["B"], "repo": Path("/repo")}
+        self.assertEqual(code_diagrams.notes(entry), [
+            "Sources: A → `src/A.cs:3`",
+            "Not drawn: 1 more type (B)",
+        ])
