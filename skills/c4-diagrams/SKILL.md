@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires python3 (3.11+). Node.js with @mermaid-js/mermaid-cli is optional, for SVG rendering.
 metadata:
   author: ythalorossy
-  version: "3.1.0"
+  version: "3.2.0"
 ---
 
 # Architecture Diagram Generator
@@ -19,6 +19,7 @@ Turn a repository into C4 diagrams (system context, containers, components, code
 | 1 · System context | the system, the people using it, the external systems it talks to | **you**, in `c4-model.json` |
 | 2 · Containers | what runs on its own (web API, web app, worker, CLI) and the data stores | the script finds them; you name and describe them |
 | 3 · Components | inside each container: its modules, then the packages/namespaces inside them and their imports | the script, from the code; you describe the important ones |
+| 4 · Code | the classes and interfaces of 2–5 key components: inheritance, dependencies, public methods | **you** pick the components in `c4-model.json` `code`; the script extracts the types |
 | Key flows | 1–3 important requests traced step by step (sequence diagrams) | **you**, in `c4-model.json` `flows` |
 | Deployment | docker-compose services, Dockerfiles, Kubernetes, CI and hosting files | the script |
 | API, configuration, inventory | HTTP routes, environment variables with defaults, frameworks and versions | the script |
@@ -56,6 +57,7 @@ Read `summary.json` and `c4-facts.json`. Then read enough code to answer what th
 - **Is each fact real?** For example, a `requests` call in a one-off script isn't a system dependency, and `excluded` is the place for it.
 - **What does each container and key component do?** Open the code components in `c4-facts.json` (`containers[].code_components`) and read a file or two per package, so you can describe them.
 - **What are the main flows?** Follow 1–3 important requests from the entry point (an endpoint in `endpoints`, a UI action, a CLI command or a scheduled job) through the components to the stores and external systems.
+- **Which components matter most?** Pick 2–5 that hold the core behaviour (a workflow engine, the migration agents, a client wrapper) for Level 4, and read their main classes.
 
 Treat the component graph as the source of truth for which components and edges exist.
 
@@ -68,6 +70,7 @@ Write `c4-model.json` in the output folder, following `assets/c4-model-reference
 - every element has `evidence`, or `"assumption": true`;
 - add a one-line description for each important component, using the ids from `c4-facts.json` (module ids, and code ids such as `weather-api::controller`);
 - add 1–3 `flows`: each a named, ordered list of steps between people, containers, external systems or components. Use component ids for the steps inside a container, so the flow shows the code path.
+- add `code`: 2–5 key components (component ids from `c4-facts.json`), each with a one-line `description` and, optionally, the `types` to center the class diagram on.
 
 Then run:
 
@@ -104,3 +107,4 @@ For an architecture review, walk through `assets/architecture-review-checklist.m
 | Treating "outside solution/workspace" as dead code | Examples, fixtures and tooling are often standalone on purpose. Check before recommending deletion. |
 | Inventing layers ("Controller → Service → Repository") the code doesn't have | Name only components and edges in the facts or that you saw in the code. |
 | Writing output to a temp or scratchpad folder | The user can't find it later. Use the default `./architecture-docs/` or the location they named. |
+| Level 4 on model or DTO folders | They only hold data. Pick components with behaviour: services, engines, agents, clients. |

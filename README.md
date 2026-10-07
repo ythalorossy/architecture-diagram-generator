@@ -9,6 +9,7 @@
 | 1 · System context | the system, its users, the external systems it talks to | the agent, from the code and docs, in an editable `c4-model.json` |
 | 2 · Containers | what runs on its own (web API, web app, worker, CLI) and its data stores | detected in project files, dependencies, EF Core/DB clients, docker-compose |
 | 3 · Components | each container's modules, then the packages/namespaces inside them (Java/Kotlin packages, C# folders, Go packages) and their imports | the code, without tests; the agent describes the important ones |
+| 4 · Code | the classes and interfaces of the key components: inheritance, dependencies, public methods | the agent picks the components; the script extracts the types |
 | Key flows | 1–3 important requests traced step by step as sequence diagrams | the agent, from the code, in `c4-model.json` |
 
 The report also has sections built straight from the code:
@@ -148,10 +149,10 @@ By default the files are written to `./architecture-docs/<repo name>/` in the cu
 Output files:
 
 - `ArchitectureReport.md`
-- `c4-facts.json`, `c4-container.*`, `c4-component-<container>.*` (modules), `c4-code-<container>.*` (packages/namespaces), `c4-deployment.*`, and with a model `c4-context.*` and `c4-flow-<flow>.*`
+- `c4-facts.json`, `c4-container.*`, `c4-component-<container>.*` (modules), `c4-structure-<container>.*` (packages/namespaces), `c4-deployment.*`, and with a model `c4-context.*`, `c4-flow-<flow>.*` and `c4-code-<container>-<component>.*` (Level 4 class diagrams)
 - `dependency-graph.mmd` / `.svg` / `.json`, `repository-scan.json`, `summary.json`
 
-Run on its own, the analyzer draws the Container and Component levels from code facts only. Through the skill, the agent also writes `c4-model.json` (people, external systems, component descriptions and key flows, each backed by evidence or marked as an assumption) and draws the System Context level and the flow diagrams. You can edit `c4-model.json` and redraw every diagram:
+Run on its own, the analyzer draws the Container and Component levels from code facts only. Through the skill, the agent also writes `c4-model.json` (people, external systems, component descriptions and key flows, each backed by evidence or marked as an assumption) and draws the System Context level, the flow diagrams and the Level 4 class diagrams of the key components. You can edit `c4-model.json` and redraw every diagram:
 
 ```bash
 python3 skills/c4-diagrams/scripts/render_c4.py ./architecture-docs/<repo name>
