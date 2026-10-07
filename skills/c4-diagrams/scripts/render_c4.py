@@ -23,6 +23,7 @@ if str(SKILL_DIR) not in sys.path:
     sys.path.insert(0, str(SKILL_DIR))
 
 from scripts.generate_mermaid import _node_ids, render_svg
+from scripts import code_diagrams
 
 
 MAX_COMPONENTS = 20
@@ -528,8 +529,8 @@ def component_diagrams(model, facts):
             for suffix, subtitle, nodes, edges, notes in _component_views(
                 code, overview=not has_modules, full_list="c4-facts.json (`code_components`)"
             ):
-                title = f"{container['name']} · code" + (f" / {subtitle}" if subtitle else "")
-                stem = f"c4-code-{container['id']}{suffix}"
+                title = f"{container['name']} · code structure" + (f" / {subtitle}" if subtitle else "")
+                stem = f"c4-structure-{container['id']}{suffix}"
                 mermaid = _graph_diagram(model, facts, container, container_fact, title, nodes, edges, texts, "used_by_code")
                 results.append((stem, title, mermaid, notes, "code"))
 
@@ -752,6 +753,7 @@ def render(output_dir, facts_only=False, svg=True):
     model_file = output / "c4-model.json"
 
     errors, warnings = [], []
+    code_entries = []
     if facts_only or not model_file.is_file():
         model = facts_only_model(facts)
     else:
@@ -759,6 +761,10 @@ def render(output_dir, facts_only=False, svg=True):
         for key in ("people", "containers", "external_systems", "relationships", "excluded", "flows"):
             model.setdefault(key, [])
         errors, warnings = validate(model, facts)
+        if errors:
+            return {"errors": errors, "warnings": warnings}
+        errors, code_warnings, code_entries = code_diagrams.prepare(model, facts, output)
+        warnings += code_warnings
         if errors:
             return {"errors": errors, "warnings": warnings}
 
@@ -776,6 +782,8 @@ def render(output_dir, facts_only=False, svg=True):
     flows = flow_diagrams(model, facts)
     for stem, _, mermaid, _ in flows:
         diagrams[stem] = mermaid
+    for entry in code_entries:
+        diagrams[entry["stem"]] = entry["mermaid"]
     deployment = deployment_diagram(facts, model)
     if deployment:
         diagrams["c4-deployment"] = deployment
@@ -814,6 +822,14 @@ def render(output_dir, facts_only=False, svg=True):
                   "inside them (packages or namespaces and the imports between them).", ""]
         for stem, title, mermaid, notes, kind in components:
             block.append(_section(f"#### {title}", stem, mermaid, rendered.get(stem), notes))
+
+    if code_entries:
+        block += ["### Level 4: Code", "",
+                  "The classes and interfaces of the key components: inheritance, implemented interfaces, "
+                  "dependencies inside the component and public methods. Boxes marked external live in another component.", ""]
+        for entry in code_entries:
+            block.append(_section(f"#### {_clean(entry['title'])}", entry["stem"], entry["mermaid"],
+                                  rendered.get(entry["stem"]), code_diagrams.notes(entry), intro=entry["description"]))
 
     if flows:
         block += ["### Key flows", "", "How a request moves through the system, step by step.", ""]

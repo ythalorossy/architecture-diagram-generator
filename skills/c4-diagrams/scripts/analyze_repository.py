@@ -16,6 +16,7 @@ from scripts.generate_mermaid import generate_mermaid, render_svg
 from scripts.generate_docs import analyze_graph, generate_report
 from scripts.c4_facts import collect_facts
 from scripts.render_c4 import render as render_c4
+from scripts.code_diagrams import repository_root
 
 
 class RepositoryAnalyzer:
@@ -173,6 +174,7 @@ class RepositoryAnalyzer:
         print("Collecting C4 facts...")
 
         facts = collect_facts(self.repo_path, dependency_graph)
+        facts["repository_root"] = repository_root(self.repo_path, self.output_path)
 
         self._save_json(
             facts,
