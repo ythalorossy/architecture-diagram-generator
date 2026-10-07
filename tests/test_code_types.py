@@ -316,5 +316,152 @@ class GoTest(unittest.TestCase):
         self.assertEqual(self.types["Order"]["depends_on"], ["Line"])
 
 
+PYTHON = '''from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from enum import Enum
+
+
+class Notifier(ABC):
+    """Sends things. class Fake: pass"""
+
+    @abstractmethod
+    def send(self, message: "Message") -> bool:
+        ...
+
+
+class SlackNotifier(Notifier):
+    def __init__(self, client: "SlackClient", retries: int = 3):
+        self.client = client
+
+    def send(self, message, *, urgent=False) -> bool:
+        def inner():
+            pass
+        return True
+
+    async def flush(self):
+        pass
+
+    def _format(self, message):
+        return ""
+
+
+@dataclass
+class Message:
+    text: str
+    channel: "Channel"
+
+
+class Channel(Enum):
+    GENERAL = "general"
+    ALERTS = "alerts"
+
+
+class SlackClient:
+    pass
+'''
+
+
+class PythonTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.types = extract_from({"notify.py": PYTHON, "notify_pb2.py": "class Generated:\n    pass\n"})
+
+    def test_types(self):
+        self.assertEqual(sorted(self.types), ["Channel", "Message", "Notifier", "SlackClient", "SlackNotifier"])
+
+    def test_abstract_base(self):
+        t = self.types["Notifier"]
+        self.assertEqual(t["kind"], "abstract")
+        self.assertEqual(t["bases"], [])
+        self.assertEqual(t["methods"], ["send(message) bool"])
+
+    def test_class_public_methods_and_init_dependencies(self):
+        t = self.types["SlackNotifier"]
+        self.assertEqual(t["bases"], ["Notifier"])
+        self.assertEqual(t["methods"], ["send(message, urgent) bool", "flush()"])
+        self.assertEqual(t["depends_on"], ["SlackClient"])
+
+    def test_dataclass_and_enum(self):
+        self.assertEqual(self.types["Message"]["kind"], "record")
+        self.assertEqual(self.types["Message"]["depends_on"], ["Channel"])
+        self.assertEqual(self.types["Channel"]["kind"], "enum")
+        self.assertEqual(self.types["Channel"]["values"], ["GENERAL", "ALERTS"])
+
+
+TYPESCRIPT = """import { Injectable } from '@nestjs/common';
+
+/** class Fake {} */
+export interface PaymentGateway {
+  charge(amount: number, token: string): Promise<Receipt>;
+  refund(id: string): Promise<void>;
+}
+
+export abstract class BaseGateway {
+  protected readonly name = 'base {';
+  abstract describe(): string;
+}
+
+@Injectable()
+export class StripeGateway extends BaseGateway implements PaymentGateway {
+  #secret = '';
+  constructor(private readonly client: StripeClient, private logger: Logger) {
+    super();
+  }
+
+  async charge(amount: number, token: string): Promise<Receipt> {
+    if (amount > 0) { return { id: '1' } as Receipt; }
+    throw new Error('x');
+  }
+
+  public refund(id: string): Promise<void> { return Promise.resolve(); }
+  describe(): string { return 'stripe'; }
+  private audit(): void {}
+  protected log(): void {}
+}
+
+export enum Currency { USD = 'usd', EUR = 'eur' }
+
+export interface Receipt { id: string; }
+export class StripeClient {}
+"""
+
+JAVASCRIPT = """export default class Widget extends Base {
+  render() { return 1; }
+  #hidden() {}
+}
+"""
+
+
+class TypeScriptTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.types = extract_from({"payments.ts": TYPESCRIPT, "widget.js": JAVASCRIPT, "api.d.ts": "export interface Declared {}"})
+
+    def test_types(self):
+        self.assertEqual(sorted(self.types), [
+            "BaseGateway", "Currency", "PaymentGateway", "Receipt", "StripeClient", "StripeGateway", "Widget",
+        ])
+
+    def test_interface_methods(self):
+        t = self.types["PaymentGateway"]
+        self.assertEqual(t["kind"], "interface")
+        self.assertEqual(t["methods"], ["charge(amount, token) Promise<Receipt>", "refund(id) Promise<void>"])
+        self.assertEqual(self.types["Receipt"]["methods"], [])
+
+    def test_class_public_methods_and_constructor_dependencies(self):
+        t = self.types["StripeGateway"]
+        self.assertEqual(t["bases"], ["BaseGateway"])
+        self.assertEqual(t["interfaces"], ["PaymentGateway"])
+        self.assertEqual(t["methods"], ["charge(amount, token) Promise<Receipt>", "refund(id) Promise<void>", "describe() string"])
+        self.assertEqual(t["depends_on"], ["StripeClient"])
+
+    def test_abstract_enum_and_javascript(self):
+        self.assertEqual(self.types["BaseGateway"]["kind"], "abstract")
+        self.assertEqual(self.types["BaseGateway"]["methods"], ["describe() string"])
+        self.assertEqual(self.types["Currency"]["values"], ["USD", "EUR"])
+        self.assertEqual(self.types["Widget"]["bases"], ["Base"])
+        self.assertEqual(self.types["Widget"]["methods"], ["render()"])
+
+
 if __name__ == "__main__":
     unittest.main()

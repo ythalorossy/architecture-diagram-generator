@@ -434,7 +434,112 @@ def _parse_go(text, file):
     return types, methods
 
 
-PARSERS = {"cs": _parse_cs, "java": _parse_java, "kotlin": _parse_kotlin, "go": _parse_go}
+# ---------- Python ----------
+
+PY_CLASS = re.compile(r"^class\s+(?P<name>\w+)\s*(?:\[[^\]]*\])?\s*(?:\((?P<bases>[^)]*)\))?\s*:", re.MULTILINE)
+PY_DEF = re.compile(
+    r"^(?P<indent>[ \t]+)(?:async\s+)?def\s+(?P<name>\w+)\s*\((?P<params>[^)]*)\)\s*(?:->\s*(?P<ret>[^:]+?))?\s*:",
+    re.MULTILINE,
+)
+PY_ENUMS = {"Enum", "IntEnum", "StrEnum", "Flag", "IntFlag"}
+PY_SKIPPED_BASES = {"object", "ABC", "Protocol", "Generic"} | PY_ENUMS
+
+
+def _parse_python(text, file):
+    masked = _mask(text, "python")
+    types = []
+    for m in PY_CLASS.finditer(masked):
+        raw_bases = text[m.start("bases"):m.end("bases")] if m["bases"] is not None else ""
+        names = [_type_name(b) for b in _split_top(raw_bases) if "=" not in b]
+        if set(names) & PY_ENUMS:
+            kind = "enum"
+        elif "Protocol" in names:
+            kind = "interface"
+        elif "ABC" in names or "ABCMeta" in raw_bases:
+            kind = "abstract"
+        elif re.search(r"^@(?:dataclasses\.)?dataclass\b[^\n]*\n\Z", masked[:m.start()], re.MULTILINE):
+            kind = "record"
+        else:
+            kind = "class"
+        t = _new_type(m["name"], kind, "python", file, _line_of(masked, m.start("name")))
+        t["bases"] = [n for n in names if n not in PY_SKIPPED_BASES]
+        start = masked.find("\n", m.end()) + 1 if "\n" in masked[m.end():] else len(masked)
+        after = re.compile(r"^\S", re.MULTILINE).search(masked, start)
+        end = after.start() if after else len(masked)
+        first = re.search(r"^([ \t]+)\S", masked[start:end], re.MULTILINE)
+        indent = first.group(1) if first else None
+        if indent is not None:
+            for d in PY_DEF.finditer(masked, start, end):
+                if d["indent"] != indent:
+                    continue
+                params = text[d.start("params"):d.end("params")]
+                ret = text[d.start("ret"):d.end("ret")] if d["ret"] is not None else ""
+                if d["name"] == "__init__":
+                    t["_refs"] |= _param_refs(params, "python")
+                if not d["name"].startswith("_"):
+                    t["methods"].append(_method(d["name"], params, ret.strip("\"' "), "python"))
+            body = text[start:end]
+            for a in re.finditer(rf"^{indent}(\w+)\s*:\s*([^=\n]+)", body, re.MULTILINE):
+                t["_refs"] |= _refs(a.group(2))
+            if kind == "enum":
+                t["values"] = re.findall(rf"^{indent}([A-Z_][A-Z0-9_]*)\s*=", masked[start:end], re.MULTILINE)
+        types.append(t)
+    return types, []
+
+
+# ---------- TypeScript / JavaScript ----------
+
+TS_TYPE = re.compile(
+    r"^[ \t]*(?:@\w+(?:\([^)]*\))?\s+)*(?:export\s+)?(?:default\s+)?(?:declare\s+)?(?:const\s+)?"
+    r"(?P<abstract>abstract\s+)?(?P<kw>class|interface|enum)\s+(?P<name>\w+)(?:\s*<[^{]*?>)?"
+    r"(?:\s+extends\s+(?P<ext>[^{]+?))?(?:\s+implements\s+(?P<impl>[^{]+?))?\s*(?=\{)",
+    re.MULTILINE,
+)
+TS_METHOD = re.compile(
+    r"^[ \t]*(?:@\w+(?:\([^)]*\))?\s+)*"
+    r"(?P<mods>(?:(?:public|private|protected|static|async|abstract|readonly|override|declare)\s+)*)\*?\s*"
+    r"(?P<name>#?\w+)\s*(?:<[^>()]*>)?\s*\((?P<params>[^)]*)\)\s*(?::\s*(?P<ret>[^{;=]+?))?\s*(?:[{;]|=>|$)",
+    re.MULTILINE,
+)
+TS_IFACE_METHOD = re.compile(
+    r"^[ \t]*(?:readonly\s+)?(?P<name>\w+)\??\s*(?:<[^>()]*>)?\s*\((?P<params>[^)]*)\)\s*:\s*(?P<ret>[^;\n]+)",
+    re.MULTILINE,
+)
+TS_NOT_METHODS = {"constructor", "if", "for", "while", "switch", "catch", "return", "function", "super"}
+
+
+def _parse_ts(text, file):
+    masked = _mask(text, "ts")
+    found = []
+    for m in TS_TYPE.finditer(masked):
+        kind = {"interface": "interface", "enum": "enum"}.get(m["kw"], "abstract" if m["abstract"] else "class")
+        t = _new_type(m["name"], kind, "ts", file, _line_of(masked, m.start("name")))
+        span = _body(masked, m.end())
+        flat = _flatten(masked[span[0] + 1:span[1]]) if span else ""
+        if kind == "enum":
+            t["values"] = _enum_values(flat)
+            found.append((m.start("name"), span, t))
+            continue
+        t["bases"] = [_type_name(b) for b in _split_top(m["ext"] or "")]
+        t["interfaces"] = [_type_name(i) for i in _split_top(m["impl"] or "")]
+        if kind == "interface":
+            for method in TS_IFACE_METHOD.finditer(flat):
+                t["methods"].append(_method(method["name"], method["params"], method["ret"].strip().rstrip(","), "ts"))
+        else:
+            for method in TS_METHOD.finditer(flat):
+                mods = set(method["mods"].split())
+                if method["name"] in TS_NOT_METHODS or method["name"].startswith("#") or mods & {"private", "protected"}:
+                    continue
+                t["methods"].append(_method(method["name"], method["params"], method["ret"], "ts"))
+            t["_refs"] |= _constructor_refs("constructor", flat, "ts")
+        found.append((m.start("name"), span, t))
+    return _top_level(found), []
+
+
+PARSERS = {
+    "cs": _parse_cs, "java": _parse_java, "kotlin": _parse_kotlin, "go": _parse_go,
+    "python": _parse_python, "ts": _parse_ts,
+}
 
 
 def _merge(types, new):
