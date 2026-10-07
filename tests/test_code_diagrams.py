@@ -102,6 +102,30 @@ class PrepareTest(unittest.TestCase):
         errors, _, _ = self.prepare({"container": "api", "component": "Api"}, {"container": "api", "component": "Api"})
         self.assertIn("listed twice", errors[0])
 
+    def test_malformed_entries_are_validation_errors(self):
+        for item, message in [
+            ({"container": "api", "component": "Api", "types": [{"name": "Foo"}]}, "types must be a list of type names"),
+            ({"container": "api", "component": "Api", "types": "WorkflowConductor"}, "types must be a list of type names"),
+            ({"container": "api", "component": 5}, "needs a container and a component"),
+            ({"container": ["api"], "component": "Api"}, "needs a container and a component"),
+        ]:
+            errors, _, _ = self.prepare(item)
+            self.assertEqual(len(errors), 1, item)
+            self.assertIn(message, errors[0])
+
+    def test_symlink_outside_the_folder_is_skipped(self):
+        shared = self.root / "shared"
+        shared.mkdir()
+        (shared / "Common.cs").write_text("public class Common { }")
+        try:
+            (self.root / "repo" / "Api" / "Workflow" / "Common.cs").symlink_to(shared / "Common.cs")
+        except OSError:
+            self.skipTest("symlinks not available")
+        for component in ("Api", "Api::Workflow"):
+            errors, _, entries = self.prepare({"container": "api", "component": component})
+            self.assertEqual(errors, [])
+            self.assertNotIn("Common", entries[0]["types"])
+
     def test_facts_from_an_older_version(self):
         facts = {k: v for k, v in FACTS.items() if k != "repository_root"}
         errors, _, _ = self.prepare({"container": "api", "component": "Api"}, facts=facts)
@@ -140,6 +164,12 @@ class SelectTypesTest(unittest.TestCase):
         self.assertEqual(chosen[:6], ["Hub", "T00", "T01", "T02", "T03", "T04"])
         self.assertEqual(len(left_out), 19)
 
+    def test_wanted_types_are_capped_too(self):
+        types = {f"T{i:02}": fake(f"T{i:02}") for i in range(15)}
+        chosen, left_out = code_diagrams.select_types(types, list(types))
+        self.assertEqual(len(chosen), 12)
+        self.assertEqual(left_out, ["T12", "T13", "T14"])
+
     def test_wanted_types_come_first_even_when_unconnected(self):
         types = {"A": fake("A", depends_on=["B"]), "B": fake("B"), "C": fake("C")}
         chosen, left_out = code_diagrams.select_types(types, ["C", "A"])
@@ -163,7 +193,7 @@ classDiagram
     direction TB
     class WorkflowConductor {
         +Change(id) bool
-        +Load(id) Task~List~Job~~
+        +Load(id) Task#lt;List#lt;Job#gt;#gt;
     }
     class IClock {
         <<interface>>
@@ -227,6 +257,23 @@ class ClassDiagramTest(unittest.TestCase):
         self.assertIn("    direction LR\n", code_diagrams.class_diagram(types, list(types)))
         two = {k: v for k, v in types.items() if k[1] != "2"}
         self.assertIn("    direction TB\n", code_diagrams.class_diagram(two, list(two)))
+
+    def test_generics_with_commas_use_entity_codes(self):
+        types = {"A": typ("A", methods=["Map() Task<Dictionary<string, int>>"])}
+        self.assertIn("+Map() Task#lt;Dictionary#lt;string, int#gt;#gt;", code_diagrams.class_diagram(types, ["A"]))
+
+    def test_unsafe_names_get_ids_and_labels(self):
+        types = {
+            "Ação": typ("Ação", interfaces=["note"]),
+            "link": typ("link", depends_on=["Ação"]),
+        }
+        text = code_diagrams.class_diagram(types, ["Ação", "link"])
+        self.assertNotIn("class Ação", text)
+        self.assertNotIn("class link", text)
+        self.assertNotIn("class note", text)
+        self.assertIn('["Ação"]', text)
+        self.assertIn('["link"]', text)
+        self.assertIn('["note"]', text)
 
     def test_notes(self):
         types = {"A": typ("A"), "B": typ("B")}

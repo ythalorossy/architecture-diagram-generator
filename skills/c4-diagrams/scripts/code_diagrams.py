@@ -42,6 +42,10 @@ def _module_dirs(repo, container_fact):
 
 
 def _skipped(file, base):
+    try:
+        Path(file).relative_to(base)
+    except ValueError:  # a symlink to a file outside the folder
+        return True
     return (
         code_facts._is_test(file, base)
         or _is_vendored(Path(file).relative_to(base).parts)
@@ -89,7 +93,7 @@ def select_types(types, wanted=(), limit=MAX_TYPES):
     near = _neighbors(types)
     rank = sorted(types, key=lambda n: (-len(near[n]), -len(types[n]["methods"]), n))
     if wanted:
-        chosen = list(dict.fromkeys(wanted))
+        chosen = list(dict.fromkeys(wanted))[:limit]
         for name in rank:
             if len(chosen) >= limit:
                 break
@@ -103,17 +107,37 @@ def select_types(types, wanted=(), limit=MAX_TYPES):
 # One `style` line per box: mermaid-cli accepts classDef/cssClass in class diagrams but emits no CSS for them.
 COMPONENT_STYLE = "fill:#85bbf0,stroke:#5d82a8,color:#000000"
 SHARED_STYLE = "fill:#dbe9f6,stroke:#5d82a8,color:#000000,stroke-dasharray:4 3"
+SAFE_ID = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+# Words the classDiagram grammar reads as statements (checked case-insensitively).
+MERMAID_WORDS = {"class", "classdef", "cssclass", "classdiagram", "note", "link", "click", "callback", "call",
+                 "style", "namespace", "direction", "href", "end", "graph"}
 STEREOTYPES = {"interface", "abstract", "enum", "record", "struct"}
 
 
 def _member(method):
-    """"Load(id) Task<List<Job>>" -> "+Load(id) Task~List~Job~~" (Mermaid generics; no parens or braces in the type)."""
+    """"Load(id) Task<List<Job>>" -> "+Load(id) Task#lt;List#lt;Job#gt;#gt;" (entity codes: Mermaid's ~T~ generics
+    garble nested types with commas; no parens or braces in the type)."""
     head, _, ret = method.partition(")")
-    ret = re.sub(r"[(){}]", "", ret).strip().replace("<", "~").replace(">", "~").rstrip("*$")
+    ret = re.sub(r"[(){}]", "", ret).strip().replace("<", "#lt;").replace(">", "#gt;").rstrip("*$")
     return f"+{head})" + (f" {ret}" if ret else "")
 
 
-def _box(t):
+def _ids(names):
+    """Mermaid id per name: the name itself when safe, else a generated id drawn with the name as its label."""
+    ids, used = {}, set(names)
+    for name in names:
+        if SAFE_ID.fullmatch(name) and name.lower() not in MERMAID_WORDS:
+            ids[name] = name
+            continue
+        number = len(ids)
+        while f"T{number}" in used:
+            number += 1
+        ids[name] = f"T{number}"
+        used.add(ids[name])
+    return ids
+
+
+def _box(t, ref):
     members = list(t["values"]) if t["kind"] == "enum" else [_member(m) for m in t["methods"]]
     extra = len(members) - MAX_MEMBERS
     # Mermaid puts a line with parentheses in the methods compartment and one without among the attributes.
@@ -121,8 +145,8 @@ def _box(t):
     members = members[:MAX_MEMBERS] + ([more] if extra > 0 else [])
     head = [f"<<{t['kind']}>>"] if t["kind"] in STEREOTYPES else []
     if not head and not members:
-        return [f"    class {t['name']}"]
-    return [f"    class {t['name']} {{"] + [f"        {line}" for line in head + members] + ["    }"]
+        return [f"    class {ref}"]
+    return [f"    class {ref} {{"] + [f"        {line}" for line in head + members] + ["    }"]
 
 
 def _groups(types, chosen, external):
@@ -154,19 +178,20 @@ def class_diagram(types, chosen):
     # diagram stays narrow enough to read.
     direction = "LR" if _groups(types, chosen, external) >= 3 else "TB"
     lines = ["---", "config:", "  class:", "    hideEmptyMembersBox: true", "---", "classDiagram", f"    direction {direction}"]
+    ids = _ids(list(chosen) + external)
+    ref = {name: ids[name] if ids[name] == name else f'{ids[name]}["{name}"]' for name in ids}
     for name in chosen:
-        lines += _box(types[name])
+        lines += _box(types[name], ref[name])
     for name in external:
-        lines += [f"    class {name} {{", "        <<external>>", "    }"]
-    drawn = set(chosen) | set(external)
+        lines += [f"    class {ref[name]} {{", "        <<external>>", "    }"]
     for name in chosen:
-        t = types[name]
-        lines += [f"    {b} <|-- {name}" for b in t["bases"] if b in drawn]
-        lines += [f"    {i} <|.. {name}" for i in t["interfaces"] if i in drawn]
-        lines += [f"    {name} *-- {e}" for e in t["embeds"] if e in drawn]
-        lines += [f"    {name} ..> {d}" for d in t["depends_on"] if d in chosen]
-    lines += [f"    style {name} {COMPONENT_STYLE}" for name in chosen]
-    lines += [f"    style {name} {SHARED_STYLE}" for name in external]
+        t, me = types[name], ids[name]
+        lines += [f"    {ids[b]} <|-- {me}" for b in t["bases"] if b in ids]
+        lines += [f"    {ids[i]} <|.. {me}" for i in t["interfaces"] if i in ids]
+        lines += [f"    {me} *-- {ids[e]}" for e in t["embeds"] if e in ids]
+        lines += [f"    {me} ..> {ids[d]}" for d in t["depends_on"] if d in chosen]
+    lines += [f"    style {ids[name]} {COMPONENT_STYLE}" for name in chosen]
+    lines += [f"    style {ids[name]} {SHARED_STYLE}" for name in external]
     return "\n".join(lines) + "\n"
 
 
@@ -210,8 +235,12 @@ def prepare(model, facts, output):
 
     for number, item in enumerate(code, 1):
         where = f"code[{number}]"
-        if not isinstance(item, dict) or not item.get("container") or not item.get("component"):
+        if not isinstance(item, dict) or not all(isinstance(item.get(k), str) and item[k] for k in ("container", "component")):
             errors.append(f"{where}: needs a container and a component")
+            continue
+        wanted = item.get("types") or []
+        if not isinstance(wanted, list) or not all(isinstance(name, str) for name in wanted):
+            errors.append(f"{where}: types must be a list of type names")
             continue
         element = elements.get(item["container"])
         covers = (element.get("facts") or [element["id"]]) if element else []
@@ -233,7 +262,6 @@ def prepare(model, facts, output):
         if not types:
             warnings.append(f"{where}: no classes or interfaces found in {item['component']}; no Level 4 diagram for it")
             continue
-        wanted = item.get("types") or []
         unknown = [name for name in wanted if name not in types]
         if unknown:
             errors += [f"{where}: type {name!r} not found in {item['component']}{_suggest(name, types)}" for name in unknown]
