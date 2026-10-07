@@ -210,10 +210,23 @@ class ClassDiagramTest(unittest.TestCase):
             "Base": typ("Base", "struct", methods=["Get(ctx, id) (*Order, error)"]),
         }
         text = code_diagrams.class_diagram(types, ["Store", "Base"])
-        self.assertIn("        +M7() error\n        … 2 more\n", text)
+        self.assertIn("        +M7() error\n        …(2 more)\n", text)  # parentheses keep it in the methods compartment
         self.assertNotIn("+M8()", text)
         self.assertIn("+Get(ctx, id) *Order, error", text)
         self.assertIn("    Store *-- Base\n", text)
+
+    def test_enum_overflow_stays_with_the_values(self):
+        types = {"Big": typ("Big", "enum", values=[f"V{i}" for i in range(10)])}
+        self.assertIn("        V7\n        … 2 more\n", code_diagrams.class_diagram(types, ["Big"]))
+
+    def test_many_unconnected_groups_are_laid_out_left_to_right(self):
+        types = {}
+        for i in range(3):
+            types[f"I{i}"] = typ(f"I{i}", "interface")
+            types[f"C{i}"] = typ(f"C{i}", interfaces=[f"I{i}"])
+        self.assertIn("    direction LR\n", code_diagrams.class_diagram(types, list(types)))
+        two = {k: v for k, v in types.items() if k[1] != "2"}
+        self.assertIn("    direction TB\n", code_diagrams.class_diagram(two, list(two)))
 
     def test_notes(self):
         types = {"A": typ("A"), "B": typ("B")}

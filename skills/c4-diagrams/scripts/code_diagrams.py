@@ -116,22 +116,44 @@ def _member(method):
 def _box(t):
     members = list(t["values"]) if t["kind"] == "enum" else [_member(m) for m in t["methods"]]
     extra = len(members) - MAX_MEMBERS
-    members = members[:MAX_MEMBERS] + ([f"… {extra} more"] if extra > 0 else [])
+    # Mermaid puts a line with parentheses in the methods compartment and one without among the attributes.
+    more = f"… {extra} more" if t["kind"] == "enum" else f"…({extra} more)"
+    members = members[:MAX_MEMBERS] + ([more] if extra > 0 else [])
     head = [f"<<{t['kind']}>>"] if t["kind"] in STEREOTYPES else []
     if not head and not members:
         return [f"    class {t['name']}"]
     return [f"    class {t['name']} {{"] + [f"        {line}" for line in head + members] + ["    }"]
 
 
+def _groups(types, chosen, external):
+    """Number of unconnected groups among the drawn boxes."""
+    owner = {name: name for name in list(chosen) + list(external)}
+
+    def find(name):
+        while owner[name] != name:
+            name = owner[name]
+        return name
+
+    for name in chosen:
+        t = types[name]
+        for other in t["bases"] + t["interfaces"] + t["embeds"] + t["depends_on"]:
+            if other in owner:
+                owner[find(other)] = find(name)
+    return len({find(name) for name in owner})
+
+
 def class_diagram(types, chosen):
     """Mermaid classDiagram of the chosen types; base types from other components are drawn as external boxes."""
-    lines = ["---", "config:", "  class:", "    hideEmptyMembersBox: true", "---", "classDiagram", "    direction TB"]
     external = []
     for name in chosen:
         t = types[name]
         for parent in t["bases"] + t["interfaces"] + t["embeds"]:
             if parent not in types and parent not in external:
                 external.append(parent)
+    # Unconnected groups sit side by side across the layout direction: with several, stack them (LR) so the
+    # diagram stays narrow enough to read.
+    direction = "LR" if _groups(types, chosen, external) >= 3 else "TB"
+    lines = ["---", "config:", "  class:", "    hideEmptyMembersBox: true", "---", "classDiagram", f"    direction {direction}"]
     for name in chosen:
         lines += _box(types[name])
     for name in external:
