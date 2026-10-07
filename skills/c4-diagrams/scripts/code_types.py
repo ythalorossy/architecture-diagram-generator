@@ -394,7 +394,47 @@ def _parse_kotlin(text, file):
     return _top_level(found), []
 
 
-PARSERS = {"cs": _parse_cs, "java": _parse_java, "kotlin": _parse_kotlin}
+# ---------- Go ----------
+
+GO_TYPE = re.compile(r"^type\s+(?P<name>\w+)(?:\[[^\]]*\])?\s+(?P<kw>struct|interface)\s*\{", re.MULTILINE)
+GO_FUNC = re.compile(
+    r"^func\s+\(\s*(?:\w+\s+)?\*?(?P<recv>\w+)(?:\[[^\]]*\])?\s*\)\s+(?P<name>[A-Z]\w*)\s*\((?P<params>[^)]*)\)\s*(?P<ret>[^{\n]*)",
+    re.MULTILINE,
+)
+GO_FIELD = re.compile(r"^(\w+(?:\s*,\s*\w+)*)\s+(\S.*)$")
+GO_IFACE_METHOD = re.compile(r"^([A-Z]\w*)\s*\(([^)]*)\)\s*(.*)$")
+
+
+def _parse_go(text, file):
+    masked = _mask(text, "go")
+    types = []
+    for m in GO_TYPE.finditer(masked):
+        kind = m["kw"]
+        t = _new_type(m["name"], kind, "go", file, _line_of(masked, m.start("name")))
+        brace = m.end() - 1
+        flat = _flatten(masked[brace + 1:_block_end(masked, brace)])
+        for line in re.split(r"[\n;]", flat):
+            line = line.strip()
+            if not line:
+                continue
+            if kind == "struct":
+                field = GO_FIELD.match(line)
+                if field and not field.group(2).startswith("`"):
+                    t["_refs"] |= _refs(field.group(2))
+                else:
+                    t["embeds"].append(_type_name(line.split()[0]))
+            else:
+                method = GO_IFACE_METHOD.match(line)
+                if method:
+                    t["methods"].append(_method(method[1], method[2], method[3], "go"))
+                elif re.fullmatch(r"\*?[\w.]+", line):
+                    t["bases"].append(_type_name(line))
+        types.append(t)
+    methods = [(f["recv"], _method(f["name"], f["params"], f["ret"], "go")) for f in GO_FUNC.finditer(masked)]
+    return types, methods
+
+
+PARSERS = {"cs": _parse_cs, "java": _parse_java, "kotlin": _parse_kotlin, "go": _parse_go}
 
 
 def _merge(types, new):

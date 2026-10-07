@@ -249,5 +249,72 @@ class KotlinTest(unittest.TestCase):
         self.assertEqual(self.types["Line"]["kind"], "class")
 
 
+GO_TYPES = '''package store
+
+import "context"
+
+// Store is backed by Postgres. type Fake struct {}
+type Store interface {
+	Get(ctx context.Context, id string) (*Order, error)
+	Put(ctx context.Context, o *Order) error
+}
+
+type Order struct {
+	ID    string
+	Lines []Line
+}
+
+type Line struct{ SKU string }
+
+type PostgresStore struct {
+	Base
+	db     *DB
+	clock  Clock
+	prefix string // "{"
+}
+
+type Base struct{}
+type DB struct{}
+type Clock interface{ Now() int64 }
+'''
+
+GO_METHODS = '''package store
+
+func (s *PostgresStore) Get(ctx context.Context, id string) (*Order, error) {
+	if id == "" { return nil, nil }
+	return &Order{}, nil
+}
+
+func (s *PostgresStore) Put(ctx context.Context, o *Order) error { return nil }
+
+func (s *PostgresStore) close() {}
+
+func NewPostgresStore(db *DB) *PostgresStore { return &PostgresStore{db: db} }
+'''
+
+
+class GoTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.types = extract_from({"store.go": GO_TYPES, "store_methods.go": GO_METHODS})
+
+    def test_types(self):
+        self.assertEqual(sorted(self.types), ["Base", "Clock", "DB", "Line", "Order", "PostgresStore", "Store"])
+
+    def test_interface_method_set(self):
+        t = self.types["Store"]
+        self.assertEqual(t["kind"], "interface")
+        self.assertEqual(t["methods"], ["Get(ctx, id) (*Order, error)", "Put(ctx, o) error"])
+        self.assertEqual(self.types["Clock"]["methods"], ["Now() int64"])
+
+    def test_struct_fields_embedding_and_methods_from_another_file(self):
+        t = self.types["PostgresStore"]
+        self.assertEqual(t["kind"], "struct")
+        self.assertEqual(t["embeds"], ["Base"])
+        self.assertEqual(t["depends_on"], ["Clock", "DB"])
+        self.assertEqual(t["methods"], ["Get(ctx, id) (*Order, error)", "Put(ctx, o) error"])
+        self.assertEqual(self.types["Order"]["depends_on"], ["Line"])
+
+
 if __name__ == "__main__":
     unittest.main()
