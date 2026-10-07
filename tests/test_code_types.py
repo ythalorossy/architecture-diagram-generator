@@ -115,5 +115,139 @@ class CSharpTest(unittest.TestCase):
         self.assertEqual(types["Broken"]["bases"], ["Base"])
 
 
+JAVA = '''package com.acme.orders;
+
+import java.util.List;
+
+/** An order service. class Fake {} */
+public interface OrderService {
+    Order place(String customerId, List<Item> items);
+    default void ping() { }
+}
+
+public abstract class BaseService {
+    protected final String name = "base { name";
+    public abstract String describe();
+}
+
+@Service
+public class DefaultOrderService extends BaseService implements OrderService, Auditable {
+    private final OrderRepository repository;
+    private Clock clock;
+
+    public DefaultOrderService(OrderRepository repository, Clock clock) {
+        this.repository = repository;
+    }
+
+    @Override
+    public Order place(String customerId,
+                       List<Item> items) {
+        if (items.isEmpty()) { throw new IllegalArgumentException(); }
+        return null;
+    }
+
+    public String describe() { return "orders"; }
+    private void audit() { }
+
+    static class Inner { public void hidden() { } }
+}
+
+enum Status { NEW, PAID, SHIPPED; public boolean done() { return false; } }
+
+interface OrderRepository { Order save(Order order); }
+record Order(String id, List<Item> items) { }
+class Item { }
+'''
+
+
+class JavaTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.types = extract_from({"Orders.java": JAVA})
+
+    def test_types(self):
+        self.assertEqual(sorted(self.types), [
+            "BaseService", "DefaultOrderService", "Item", "Order", "OrderRepository", "OrderService", "Status",
+        ])
+
+    def test_interface_with_default_method(self):
+        t = self.types["OrderService"]
+        self.assertEqual(t["kind"], "interface")
+        self.assertEqual(t["methods"], ["place(customerId, items) Order", "ping() void"])
+
+    def test_class_extends_implements_and_dependencies(self):
+        t = self.types["DefaultOrderService"]
+        self.assertEqual(t["bases"], ["BaseService"])
+        self.assertEqual(t["interfaces"], ["OrderService", "Auditable"])
+        self.assertEqual(t["methods"], ["place(customerId, items) Order", "describe() String"])
+        self.assertEqual(t["depends_on"], ["OrderRepository"])
+        self.assertEqual(t["line"], line_of(JAVA, "public class DefaultOrderService"))
+
+    def test_abstract_enum_and_record(self):
+        self.assertEqual(self.types["BaseService"]["kind"], "abstract")
+        self.assertEqual(self.types["BaseService"]["methods"], ["describe() String"])
+        self.assertEqual(self.types["Status"]["values"], ["NEW", "PAID", "SHIPPED"])
+        self.assertEqual(self.types["Order"]["kind"], "record")
+        self.assertEqual(self.types["Order"]["depends_on"], ["Item"])
+
+
+KOTLIN = '''package com.acme.billing
+
+interface InvoiceSender {
+    fun send(invoice: Invoice): Boolean
+}
+
+abstract class BaseSender(protected val name: String) {
+    abstract fun describe(): String
+}
+
+class EmailSender(
+    private val client: MailClient,
+    val template: String = "hi {name}",
+) : BaseSender("email"), InvoiceSender {
+    override fun send(invoice: Invoice): Boolean {
+        return client.post(invoice.id)
+    }
+    override fun describe(): String = "email"
+    private fun log(message: String) { }
+    internal fun debug() { }
+}
+
+data class Invoice(val id: String, val lines: List<Line>)
+
+enum class Currency { USD, EUR }
+
+class MailClient { fun post(id: String): Boolean = true }
+class Line
+'''
+
+
+class KotlinTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.types = extract_from({"Billing.kt": KOTLIN})
+
+    def test_types(self):
+        self.assertEqual(sorted(self.types), [
+            "BaseSender", "Currency", "EmailSender", "Invoice", "InvoiceSender", "Line", "MailClient",
+        ])
+
+    def test_class_with_multiline_primary_constructor(self):
+        t = self.types["EmailSender"]
+        self.assertEqual(t["bases"], ["BaseSender"])
+        self.assertEqual(t["interfaces"], ["InvoiceSender"])
+        self.assertEqual(t["methods"], ["send(invoice) Boolean", "describe() String"])
+        self.assertEqual(t["depends_on"], ["MailClient"])
+
+    def test_kinds(self):
+        self.assertEqual(self.types["InvoiceSender"]["methods"], ["send(invoice) Boolean"])
+        self.assertEqual(self.types["BaseSender"]["kind"], "abstract")
+        self.assertEqual(self.types["Invoice"]["kind"], "record")
+        self.assertEqual(self.types["Invoice"]["depends_on"], ["Line"])
+        self.assertEqual(self.types["Currency"]["values"], ["USD", "EUR"])
+        self.assertEqual(self.types["MailClient"]["methods"], ["post(id) Boolean"])
+        self.assertEqual(self.types["Line"]["kind"], "class")
+
+
 if __name__ == "__main__":
     unittest.main()

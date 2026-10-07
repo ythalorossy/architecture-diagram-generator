@@ -283,7 +283,118 @@ def _parse_cs(text, file):
     return _top_level(found), []
 
 
-PARSERS = {"cs": _parse_cs}
+# ---------- Java ----------
+
+JAVA_TYPE = re.compile(
+    r"^[ \t]*(?:@\w+(?:\([^)]*\))?\s+)*"
+    r"(?P<mods>(?:(?:public|protected|private|abstract|final|static|sealed|non-sealed|strictfp)\s+)*)"
+    r"(?P<kw>class|interface|enum|record)\s+(?P<name>\w+)(?:\s*<[^{]*?>)?(?:\s*\((?P<params>[^)]*)\))?"
+    r"(?:\s+extends\s+(?P<ext>[^{]+?))?(?:\s+implements\s+(?P<impl>[^{]+?))?(?:\s+permits\s+[^{]+?)?\s*(?=\{)",
+    re.MULTILINE,
+)
+JAVA_METHOD = re.compile(
+    r"^[ \t]*(?:@\w+(?:\([^)]*\))?\s+)*"
+    r"(?P<mods>(?:(?:public|protected|private|static|final|abstract|synchronized|default|native|strictfp)\s+)*)"
+    r"(?:<[^>]+>\s+)?(?P<ret>\w[\w.]*(?:\s*<[^()]*?>)?(?:\[\])*)\s+(?P<name>\w+)\s*\((?P<params>[^)]*)\)",
+    re.MULTILINE,
+)
+JAVA_FIELD = re.compile(
+    r"^[ \t]*(?:@\w+(?:\([^)]*\))?\s+)*(?:(?:private|protected|public|final|static|transient|volatile)\s+)+"
+    r"(?P<type>\w[\w.]*(?:\s*<[^()=;]*?>)?(?:\[\])*)\s+\w+\s*[;=]",
+    re.MULTILINE,
+)
+
+
+def _parse_java(text, file):
+    masked = _mask(text, "java")
+    found = []
+    for m in JAVA_TYPE.finditer(masked):
+        kind = {"interface": "interface", "enum": "enum", "record": "record"}.get(m["kw"], "class")
+        if kind == "class" and "abstract" in m["mods"].split():
+            kind = "abstract"
+        t = _new_type(m["name"], kind, "java", file, _line_of(masked, m.start("name")))
+        span = _body(masked, m.end())
+        flat = _flatten(masked[span[0] + 1:span[1]]) if span else ""
+        if kind == "enum":
+            t["values"] = _enum_values(flat)
+            found.append((m.start("name"), span, t))
+            continue
+        extends = [_type_name(b) for b in _split_top(m["ext"] or "")]
+        t["bases"] = extends if kind == "interface" else extends[:1]
+        t["interfaces"] = [_type_name(i) for i in _split_top(m["impl"] or "")]
+        for method in JAVA_METHOD.finditer(flat):
+            mods = method["mods"].split()
+            if method["ret"] in NOT_TYPES or "private" in mods:
+                continue
+            if kind != "interface" and "public" not in mods:
+                continue
+            t["methods"].append(_method(method["name"], method["params"], method["ret"], "java"))
+        for field in JAVA_FIELD.finditer(flat):
+            t["_refs"] |= _refs(field["type"])
+        t["_refs"] |= _constructor_refs(m["name"], flat, "java")
+        if m["params"]:
+            t["_refs"] |= _param_refs(m["params"], "java")
+        found.append((m.start("name"), span, t))
+    return _top_level(found), []
+
+
+# ---------- Kotlin ----------
+
+KT_TYPE = re.compile(
+    r"^[ \t]*(?:@\w+(?:\([^)]*\))?\s+)*"
+    r"(?P<mods>(?:(?:public|internal|private|protected|abstract|open|final|sealed|data|enum|inner|value|annotation|fun|expect|actual)\s+)*)"
+    r"(?P<kw>class|interface|object)\s+(?P<name>\w+)(?:\s*<[^>{]*>)?"
+    r"(?:\s*(?:(?:public|internal|private|protected)\s+)?(?:@\w+\s+)?constructor)?"
+    r"(?:\s*\((?P<params>(?:[^()]|\([^()]*\))*)\))?"
+    r"(?:\s*:\s*(?P<bases>[^{\n]+))?",
+    re.MULTILINE,
+)
+KT_FUN = re.compile(
+    r"^[ \t]*(?:@\w+(?:\([^)]*\))?\s+)*(?P<mods>(?:\w+\s+)*?)fun\s+(?:<[^>]+>\s+)?(?:[\w.]+\.)?(?P<name>\w+)\s*"
+    r"\((?P<params>(?:[^()]|\([^()]*\))*)\)(?:\s*:\s*(?P<ret>[\w.<>?, ]+?))?\s*(?:[={]|$)",
+    re.MULTILINE,
+)
+
+
+def _parse_kotlin(text, file):
+    masked = _mask(text, "kotlin")
+    found = []
+    for m in KT_TYPE.finditer(masked):
+        mods = m["mods"].split()
+        if m["kw"] == "interface":
+            kind = "interface"
+        elif "enum" in mods:
+            kind = "enum"
+        elif "data" in mods:
+            kind = "record"
+        elif "abstract" in mods or "sealed" in mods:
+            kind = "abstract"
+        else:
+            kind = "class"
+        t = _new_type(m["name"], kind, "kotlin", file, _line_of(masked, m.start("name")))
+        span = _body(masked, m.end())
+        flat = _flatten(masked[span[0] + 1:span[1]]) if span else ""
+        if kind == "enum":
+            t["values"] = _enum_values(flat)
+            found.append((m.start("name"), span, t))
+            continue
+        for base in _split_top(m["bases"] or ""):
+            name = _type_name(base)
+            if kind == "interface" or ("(" in base and not t["bases"]):
+                t["bases"].append(name)
+            else:
+                t["interfaces"].append(name)
+        for fun in KT_FUN.finditer(flat):
+            if set(fun["mods"].split()) & {"private", "internal", "protected"}:
+                continue
+            t["methods"].append(_method(fun["name"], fun["params"], fun["ret"], "kotlin"))
+        if m["params"]:
+            t["_refs"] |= _param_refs(m["params"], "kotlin")
+        found.append((m.start("name"), span, t))
+    return _top_level(found), []
+
+
+PARSERS = {"cs": _parse_cs, "java": _parse_java, "kotlin": _parse_kotlin}
 
 
 def _merge(types, new):
