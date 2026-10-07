@@ -1,0 +1,157 @@
+"""
+C4 Level 4 (code): the components the agent lists in c4-model.json `code` are
+resolved to their source files, their types extracted (code_types.py) and drawn
+as Mermaid class diagrams.
+"""
+from difflib import get_close_matches
+from pathlib import Path
+import os
+
+try:
+    from scripts import code_facts, code_types
+    from scripts.c4_facts import slug, _is_vendored
+    from scripts.dotnet_projects import walk_files
+except ImportError:
+    import code_facts, code_types
+    from c4_facts import slug, _is_vendored
+    from dotnet_projects import walk_files
+
+MAX_TYPES = 12
+MAX_MEMBERS = 8
+KEY_COMPONENTS = 5
+
+
+def repository_root(repo, output):
+    """The repository as seen from the output folder (forward slashes); absolute when there is no relative path."""
+    repo = Path(repo).resolve()
+    try:
+        return Path(os.path.relpath(repo, Path(output).resolve())).as_posix()
+    except ValueError:  # another drive on Windows
+        return repo.as_posix()
+
+
+def _module_dirs(repo, container_fact):
+    dirs = {}
+    for module, info in ((container_fact.get("components") or {}).get("nodes") or {}).items():
+        path = repo / info["path"]
+        dirs[module] = (path.parent if path.is_file() else path).resolve()
+    if not dirs and container_fact.get("path"):
+        dirs[container_fact["name"]] = (repo / container_fact["path"]).resolve()
+    return dirs
+
+
+def _skipped(file, base):
+    return (
+        code_facts._is_test(file, base)
+        or _is_vendored(Path(file).relative_to(base).parts)
+        or code_types.is_generated(Path(file).name)
+    )
+
+
+def component_files(repo, container_fact, component):
+    """Source files of a module or a code component (`module::package`): tests, vendored and generated files left out."""
+    repo = Path(repo).resolve()
+    dirs = _module_dirs(repo, container_fact)
+    if component in dirs:
+        folder = dirs[component]
+        files = walk_files(folder, lambda name: Path(name).suffix.lower() in code_types.LANGUAGES)
+        return sorted(f.resolve() for f in files if not _skipped(f.resolve(), folder))
+    owners = (code_facts.code_components(dirs) or {}).get("_files", {})
+    return sorted(f for f, node in owners.items() if node == component and not _skipped(f, repo))
+
+
+def _component_ids(container_fact):
+    ids = set((container_fact.get("components") or {}).get("nodes") or {})
+    ids |= set((container_fact.get("code_components") or {}).get("nodes") or {})
+    if not ids and container_fact.get("path"):
+        ids.add(container_fact["name"])
+    return ids
+
+
+def _suggest(name, options):
+    matches = get_close_matches(name, sorted(options), n=3, cutoff=0.5)
+    return f" (did you mean {', '.join(matches)}?)" if matches else ""
+
+
+def _neighbors(types):
+    near = {name: set() for name in types}
+    for name, t in types.items():
+        for other in t["bases"] + t["interfaces"] + t["embeds"] + t["depends_on"]:
+            if other in types and other != name:
+                near[name].add(other)
+                near[other].add(name)
+    return near
+
+
+def select_types(types, wanted=(), limit=MAX_TYPES):
+    """(chosen, left out): the wanted types and their neighbours, or the most connected types."""
+    near = _neighbors(types)
+    rank = sorted(types, key=lambda n: (-len(near[n]), -len(types[n]["methods"]), n))
+    if wanted:
+        chosen = list(dict.fromkeys(wanted))
+        for name in rank:
+            if len(chosen) >= limit:
+                break
+            if name not in chosen and any(name in near[w] for w in wanted):
+                chosen.append(name)
+    else:
+        chosen = rank[:limit]
+    return chosen, sorted(set(types) - set(chosen))
+
+
+def prepare(model, facts, output):
+    """(errors, warnings, entries) for model["code"]; every entry is ready to draw."""
+    code = model.get("code") or []
+    if not isinstance(code, list):
+        return ["code: must be a list of {container, component, description, types}"], [], []
+    if not code:
+        return [], [], []
+    errors, warnings, entries, stems = [], [], [], set()
+    if len(code) > KEY_COMPONENTS:
+        warnings.append(
+            f"code: {len(code)} components; Level 4 is meant for the {KEY_COMPONENTS} or fewer that matter most"
+        )
+    if "repository_root" not in facts:
+        return ["code: c4-facts.json has no repository_root; re-run analyze_repository.py"], warnings, []
+    repo = (Path(output) / facts["repository_root"]).resolve()
+    elements = {c["id"]: c for c in model.get("containers") or []}
+
+    for number, item in enumerate(code, 1):
+        where = f"code[{number}]"
+        if not isinstance(item, dict) or not item.get("container") or not item.get("component"):
+            errors.append(f"{where}: needs a container and a component")
+            continue
+        element = elements.get(item["container"])
+        covers = (element.get("facts") or [element["id"]]) if element else []
+        candidates = [c for c in facts["containers"] if c["id"] in covers]
+        if not candidates:
+            errors.append(f"{where}: {item['container']!r} is not a container in the model")
+            continue
+        fact = next((c for c in candidates if item["component"] in _component_ids(c)), None)
+        if fact is None:
+            ids = set().union(*(_component_ids(c) for c in candidates))
+            errors.append(f"{where}: {item['component']!r} is not a component of {item['container']}{_suggest(item['component'], ids)}")
+            continue
+        stem = f"c4-code-{item['container']}-{slug(item['component'])}"
+        if stem in stems:
+            errors.append(f"{where}: {item['component']} is listed twice")
+            continue
+        stems.add(stem)
+        types = code_types.extract(component_files(repo, fact, item["component"]))
+        if not types:
+            warnings.append(f"{where}: no classes or interfaces found in {item['component']}; no Level 4 diagram for it")
+            continue
+        wanted = item.get("types") or []
+        unknown = [name for name in wanted if name not in types]
+        if unknown:
+            errors += [f"{where}: type {name!r} not found in {item['component']}{_suggest(name, types)}" for name in unknown]
+            continue
+        chosen, left_out = select_types(types, wanted)
+        entries.append({
+            "stem": stem,
+            "title": f"{element['name']} · {item['component']}",
+            "description": item.get("description", ""),
+            "types": types, "chosen": chosen, "left_out": left_out, "repo": repo,
+            "mermaid": "",
+        })
+    return errors, warnings, entries
