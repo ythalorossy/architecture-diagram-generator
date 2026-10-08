@@ -1,11 +1,84 @@
+<!-- Provenance rule: examples in this file come only from tests/fixtures/repos/. The JSON block below is a
+copy of tests/fixtures/repos/bookshop/c4-model.json, a synthetic repository; tests/test_reference_example.py fails
+if they differ, if the model stops validating against that fixture, or if an evidence path doesn't resolve there.
+Never paste a model from another codebase here. -->
+
 # c4-model.json reference
 
 `c4-model.json`, written by the agent, holds the parts of the C4 model that need judgement: who uses the system, what each external system is for, and a one-line description of every element. `render_c4.py` draws the diagrams from it, combined with the facts in `c4-facts.json`.
 
 ## Shape
 
+This is the complete model of Bookshop, a small synthetic sample system: a React web app, a Python API, the orders database it owns, a catalogue search index another team runs, and a payment provider. It covers every fact the analyzer finds in that sample, so it validates as it stands.
+
 ```json
-{ "note": "This example was removed. See the current version of this file for a complete, validating example." }
+{
+  "system": { "name": "Bookshop", "description": "Online shop where readers find books and buy them" },
+  "people": [
+    { "id": "reader", "name": "Reader", "description": "Searches the catalogue and buys books",
+      "assumption": true }
+  ],
+  "containers": [
+    { "id": "bookshop-web", "name": "Web app", "technology": "React, Vite",
+      "description": "Search and checkout pages in the browser",
+      "evidence": ["web/package.json:11", "docker-compose.yml:20"] },
+    { "id": "bookshop-api", "name": "Bookshop API", "technology": "Python, FastAPI",
+      "description": "Searches the catalogue and places orders",
+      "evidence": ["api/bookshop/main.py:6", "docker-compose.yml:9"] },
+    { "id": "db-postgresql", "name": "Orders database", "technology": "PostgreSQL 16", "type": "database",
+      "description": "Orders and their payment references",
+      "evidence": ["api/bookshop/orders/service.py:15", "docker-compose.yml:3"] },
+    { "id": "db-elasticsearch", "name": "Catalogue index", "technology": "Elasticsearch", "type": "database",
+      "external": true, "description": "Book catalogue search index, run and filled by the catalogue team",
+      "evidence": ["api/bookshop/search/index.py:7", "docker-compose.yml:13"] }
+  ],
+  "external_systems": [
+    { "id": "ext-payments-example", "name": "Payment provider",
+      "description": "Charges the reader's card for an order",
+      "evidence": ["api/bookshop/payments/client.py:10"] }
+  ],
+  "relationships": [
+    { "from": "reader", "to": "bookshop-web", "description": "Finds and buys books using", "technology": "HTTPS",
+      "assumption": true },
+    { "from": "bookshop-web", "to": "bookshop-api", "description": "Searches books and places orders through", "technology": "JSON/HTTPS" },
+    { "from": "bookshop-api", "to": "db-postgresql", "description": "Stores orders in", "technology": "psycopg" },
+    { "from": "bookshop-api", "to": "db-elasticsearch", "description": "Searches the catalogue in", "technology": "Elasticsearch client" },
+    { "from": "bookshop-api", "to": "ext-payments-example", "description": "Charges cards with", "technology": "HTTPS, httpx" }
+  ],
+  "components": {
+    "bookshop-web": {
+      "web/src/api": "Fetch wrappers for the API's book and order endpoints"
+    },
+    "bookshop-api": {
+      "bookshop.main": "HTTP routes; hand each request to a service",
+      "bookshop.orders": "Places an order: takes payment, then records it",
+      "bookshop.payments": "Client for the payment provider's charges API",
+      "bookshop.search": "Full-text book search against the catalogue index"
+    }
+  },
+  "flows": [
+    {
+      "id": "place-order",
+      "name": "Reader buys a book",
+      "description": "From the Buy button to the stored, paid order.",
+      "steps": [
+        { "from": "reader", "to": "bookshop-web", "description": "Clicks Buy on a book" },
+        { "from": "web/src/api", "to": "bookshop.main", "description": "POST /api/orders", "technology": "JSON/HTTPS" },
+        { "from": "bookshop.main", "to": "bookshop.orders", "description": "Places the order" },
+        { "from": "bookshop.orders", "to": "ext-payments-example", "description": "POST /v1/charges", "technology": "HTTPS" },
+        { "from": "bookshop.orders", "to": "db-postgresql", "description": "Inserts the order with its charge id", "technology": "psycopg" },
+        { "from": "bookshop.main", "to": "web/src/api", "description": "Order id and charge id", "reply": true }
+      ]
+    }
+  ],
+  "code": [
+    { "container": "bookshop-api", "component": "bookshop.orders",
+      "description": "Order placement: payment first, then the order row", "types": ["OrderService"] }
+  ],
+  "excluded": [
+    { "id": "ext-covers-example", "reason": "Called only by a one-off import script run by hand, not by the running system" }
+  ]
+}
 ```
 
 ## Rules
