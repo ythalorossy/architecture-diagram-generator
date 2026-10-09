@@ -20,6 +20,10 @@ class MaskTest(unittest.TestCase):
             "list": ["/abs/path", {"path": "/abs/other"}],
             "relative_with_home": "../../home/alice/work/repo",
             "relative_clean": "../../fixtures/repos/x",
+            "repository_root": "../../home/alice/work/repo",
+            "windows_output": r"C:\Users\runneradmin\AppData\Local\Temp\abc",
+            "windows_drive_root": "D:/a/architecture-skills/repo",
+            "mac_tmp": "/private/var/folders/abc/T/bookshop",
         }
 
         masked = mask_volatile(sample)
@@ -37,16 +41,31 @@ class MaskTest(unittest.TestCase):
         # Masking is recursive into lists of scalars and dicts.
         self.assertEqual(masked["list"][0], "<abs-path>")
         self.assertEqual(masked["list"][1]["path"], "<abs-path>")
-        # A relative path that embeds an absolute home component (notably the
-        # ``repository_root`` value written by the analyzer) is masked so the
-        # golden stays portable across machines with different homes.
+        # A relative path that embeds an absolute home component is masked.
         self.assertEqual(masked["relative_with_home"], "<abs-path>")
         # A relative path that does not embed an absolute component survives.
         self.assertEqual(masked["relative_clean"], "../../fixtures/repos/x")
+        # repository_root is masked by name (it is volatile in three
+        # different ways depending on platform: home-embedded on POSIX,
+        # clean ../../../... on Windows same-drive, drive-letter absolute
+        # on Windows different-drive). All three must be replaced.
+        self.assertEqual(masked["repository_root"], "<abs-path>")
+        # Windows-style absolute paths (backslashes) are masked by value.
+        self.assertEqual(masked["windows_output"], "<abs-path>")
+        # Windows-style absolute paths (forward slashes, as_posix) are
+        # masked by value, including non-C drives.
+        self.assertEqual(masked["windows_drive_root"], "<abs-path>")
+        # macOS /private/var/folders/... (Python's tempfile on macOS) is
+        # masked by value because it embeds the user's account path.
+        self.assertEqual(masked["mac_tmp"], "<abs-path>")
         # Masking must not mutate the input.
         self.assertEqual(
             sample["summary"]["output_folder"],
             "/tmp/abc/architecture-docs/bookshop",
+        )
+        self.assertEqual(
+            sample["repository_root"],
+            "../../home/alice/work/repo",
         )
 
 

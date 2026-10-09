@@ -12,16 +12,34 @@ if str(SKILL) not in sys.path:
 ABS_PATH_PLACEHOLDER = "<abs-path>"
 MASK_PLACEHOLDER = "<masked>"
 
-_MASK_BY_NAME = {"run_id", "Generated On"}
+# Keys whose values are always volatile, mapped to the placeholder that
+# should replace the value. ``repository_root`` is the relative path the
+# analyzer computes from the output tmpdir back to the fixture; on Linux
+# and macOS it bakes in the user's home (``../../home/<user>/...``), on
+# Windows same-drive it is a clean ``../../../...`` relative path, and on
+# Windows different-drive it is the absolute repo path (``as_posix``).
+# All three flavours are environment-specific, so mask by name.
+_MASK_BY_NAME = {
+    "run_id": MASK_PLACEHOLDER,
+    "Generated On": MASK_PLACEHOLDER,
+    "repository_root": ABS_PATH_PLACEHOLDER,
+}
 _MASK_BY_SUBSTRING = ("timestamp",)
 
-# Substrings that prove a string carries an absolute path component even when
-# the string itself starts with "../" or another relative prefix (notably the
-# repository_root value written by ``analyze_repository``: a relative path
-# from the output tmpdir back to the fixture, which embeds the user's home).
+# Substrings that prove a string carries an absolute-path component even
+# when the string itself starts with a relative prefix. Only the home-like
+# patterns: a drive-letter pattern would misfire on URL schemes such as
+# ``postgresql://host/db`` (the ``l:/`` substring), and the by-name
+# ``repository_root`` mask plus the start-of-string absolute-path prefix
+# already cover the real cases.
 _EMBEDDED_ABS_PATH = re.compile(
-    r"(/home/|/Users/|/private/|/var/folders/|C:\\|/root/)"
+    r"(/home/|/Users/|/private/|/var/folders/|/root/)"
 )
+
+# Recognised absolute-path prefixes: POSIX (``/``) or any Windows drive
+# letter (``C:\``, ``D:/``, ...). Applied at the start of the string only,
+# so a URL scheme is never mistaken for a path.
+_ABS_PATH_PREFIX = re.compile(r"^(/|[A-Za-z]:[/\\])")
 
 
 def write(root, files, crlf=False):
@@ -40,26 +58,30 @@ def line_of(text, needle):
     return next(number for number, line in enumerate(text.splitlines(), 1) if needle in line)
 
 
-def _should_mask_key(key):
+def _mask_key(key):
+    """Return the placeholder for a masked-by-name key, or None to recurse."""
     if key in _MASK_BY_NAME:
-        return True
-    return any(sub in key for sub in _MASK_BY_SUBSTRING)
+        return _MASK_BY_NAME[key]
+    if any(sub in key for sub in _MASK_BY_SUBSTRING):
+        return MASK_PLACEHOLDER
+    return None
 
 
 def _mask_value(value):
     """Recursively mask volatile fields inside a parsed JSON-like structure."""
     if isinstance(value, dict):
-        return {
-            key: (
-                MASK_PLACEHOLDER if _should_mask_key(key)
-                else _mask_value(item)
-            )
-            for key, item in value.items()
-        }
+        result = {}
+        for key, item in value.items():
+            placeholder = _mask_key(key)
+            if placeholder is not None:
+                result[key] = placeholder
+            else:
+                result[key] = _mask_value(item)
+        return result
     if isinstance(value, list):
         return [_mask_value(item) for item in value]
     if isinstance(value, str):
-        if value.startswith("/") or _EMBEDDED_ABS_PATH.search(value):
+        if _ABS_PATH_PREFIX.match(value) or _EMBEDDED_ABS_PATH.search(value):
             return ABS_PATH_PLACEHOLDER
     return value
 
@@ -67,13 +89,17 @@ def _mask_value(value):
 def mask_volatile(obj):
     """Return a deep-copied JSON structure with volatile fields replaced.
 
-    Recurses into dicts and lists. By-name, replaces keys named ``run_id`` or
-    ``Generated On`` and any key containing ``timestamp``. By-value, replaces
-    any string that looks like an absolute filesystem path. The intent is to
-    keep golden-file comparisons stable: the only field that actually varies
-    today is ``summary["output_folder"]`` (absolute path), but the name-based
-    masks are included so the helper stays correct for free when SPEC-09
-    (``run_id``) lands and whenever timestamp keys appear.
+    Recurses into dicts and lists. By-name, replaces the values of keys
+    ``run_id``, ``Generated On`` and ``repository_root``, plus any key
+    containing ``timestamp``. By-value, replaces any string that looks like
+    an absolute filesystem path (POSIX ``/...`` or Windows ``<drive>:\\...``
+    / ``<drive>:/...``) and any string that embeds an absolute-path
+    component (``/home/``, ``/Users/``, ``/private/``, ``/var/folders/``,
+    ``/root/``, or any drive prefix). The intent is to keep golden-file
+    comparisons stable: ``summary["output_folder"]`` and
+    ``facts["repository_root"]`` are the two fields that actually vary
+    today; the by-name ``run_id`` / ``Generated On`` masks stay correct
+    for free when SPEC-09 lands.
     """
     return _mask_value(copy.deepcopy(obj))
 
