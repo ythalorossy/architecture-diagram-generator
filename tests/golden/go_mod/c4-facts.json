@@ -1,0 +1,77 @@
+{
+  "repository": "go_mod",
+  "containers": [
+    {
+      "id": "api",
+      "name": "api",
+      "kind": "app",
+      "technology": "Go",
+      "path": "cmd/api",
+      "evidence": [
+        "cmd/api: package main (Go)"
+      ],
+      "components": {
+        "nodes": {
+          "cmd/api": {
+            "path": "cmd/api",
+            "group": "cmd"
+          },
+          "internal/store": {
+            "path": "internal/store",
+            "group": "internal"
+          }
+        },
+        "edges": {
+          "cmd/api": [
+            "internal/store"
+          ],
+          "internal/store": []
+        }
+      },
+      "code_components": {
+        "nodes": {
+          "cmd/api::cmd/api": {
+            "module": "cmd/api",
+            "group": "cmd/api",
+            "label": "cmd/api",
+            "language": "go",
+            "path": "cmd/api",
+            "files": 1
+          },
+          "internal/store::internal/store": {
+            "module": "internal/store",
+            "group": "internal/store",
+            "label": "internal/store",
+            "language": "go",
+            "path": "internal/store",
+            "files": 1
+          }
+        },
+        "edges": {
+          "cmd/api::cmd/api": [
+            "internal/store::internal/store"
+          ],
+          "internal/store::internal/store": []
+        }
+      },
+      "inventory": [],
+      "compose_services": null
+    }
+  ],
+  "data_stores": [],
+  "external_systems": [],
+  "relationships": [],
+  "endpoints": [],
+  "deployment": {
+    "compose": [],
+    "dockerfiles": [],
+    "kubernetes": [],
+    "ci": [],
+    "platforms": []
+  },
+  "configuration": {
+    "variables": [],
+    "files": []
+  },
+  "repository_root": "../../home/ysaldanha/lab/architecture-skills/tests/fixtures/repos/go_mod"
+}

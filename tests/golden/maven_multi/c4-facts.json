@@ -1,0 +1,52 @@
+{
+  "repository": "maven_multi",
+  "containers": [
+    {
+      "id": "maven-multi",
+      "name": "maven_multi",
+      "kind": "unknown",
+      "technology": "",
+      "path": ".",
+      "evidence": [
+        "no entry point detected; whole repository"
+      ],
+      "components": {
+        "nodes": {
+          "acme-core": {
+            "path": "core/pom.xml",
+            "group": ""
+          },
+          "acme-web": {
+            "path": "web/pom.xml",
+            "group": ""
+          }
+        },
+        "edges": {
+          "acme-core": [],
+          "acme-web": [
+            "acme-core"
+          ]
+        }
+      },
+      "code_components": null,
+      "inventory": [],
+      "compose_services": null
+    }
+  ],
+  "data_stores": [],
+  "external_systems": [],
+  "relationships": [],
+  "endpoints": [],
+  "deployment": {
+    "compose": [],
+    "dockerfiles": [],
+    "kubernetes": [],
+    "ci": [],
+    "platforms": []
+  },
+  "configuration": {
+    "variables": [],
+    "files": []
+  },
+  "repository_root": "../../home/ysaldanha/lab/architecture-skills/tests/fixtures/repos/maven_multi"
+}

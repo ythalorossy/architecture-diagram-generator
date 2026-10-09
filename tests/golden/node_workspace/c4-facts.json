@@ -1,0 +1,54 @@
+{
+  "repository": "node_workspace",
+  "containers": [
+    {
+      "id": "node-workspace",
+      "name": "node_workspace",
+      "kind": "unknown",
+      "technology": "",
+      "path": ".",
+      "evidence": [
+        "no entry point detected; whole repository"
+      ],
+      "components": {
+        "nodes": {
+          "@acme/core": {
+            "path": "packages/core/package.json",
+            "group": "packages"
+          },
+          "@acme/web": {
+            "path": "packages/web/package.json",
+            "group": "packages"
+          }
+        },
+        "edges": {
+          "@acme/core": [],
+          "@acme/web": [
+            "@acme/core"
+          ]
+        }
+      },
+      "code_components": null,
+      "inventory": [
+        "@acme/core workspace:*"
+      ],
+      "compose_services": null
+    }
+  ],
+  "data_stores": [],
+  "external_systems": [],
+  "relationships": [],
+  "endpoints": [],
+  "deployment": {
+    "compose": [],
+    "dockerfiles": [],
+    "kubernetes": [],
+    "ci": [],
+    "platforms": []
+  },
+  "configuration": {
+    "variables": [],
+    "files": []
+  },
+  "repository_root": "../../home/ysaldanha/lab/architecture-skills/tests/fixtures/repos/node_workspace"
+}

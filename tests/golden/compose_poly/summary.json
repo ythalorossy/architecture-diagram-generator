@@ -1,0 +1,27 @@
+{
+  "repository": "compose_poly",
+  "technology_stack": [],
+  "projects_found": 0,
+  "folders_found": 1,
+  "components_found": 0,
+  "dependencies_found": 0,
+  "test_projects": [],
+  "orphan_projects": [],
+  "duplicate_project_names": [],
+  "unresolved_references": [],
+  "cycles": [],
+  "untested_projects": [],
+  "dependency_graph_available": false,
+  "output_folder": "<abs-path>",
+  "c4": {
+    "containers": 1,
+    "data_stores": 1,
+    "external_systems": 0,
+    "diagrams": [
+      "c4-container",
+      "c4-deployment"
+    ],
+    "model": "facts-only",
+    "model_errors": []
+  }
+}

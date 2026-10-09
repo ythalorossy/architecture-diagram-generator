@@ -1,0 +1,29 @@
+{
+  "repository": "python_dist",
+  "technology_stack": [
+    "Python"
+  ],
+  "projects_found": 2,
+  "folders_found": 1,
+  "components_found": 2,
+  "dependencies_found": 1,
+  "test_projects": [],
+  "orphan_projects": [],
+  "duplicate_project_names": [],
+  "unresolved_references": [],
+  "cycles": [],
+  "untested_projects": [],
+  "dependency_graph_available": true,
+  "output_folder": "<abs-path>",
+  "c4": {
+    "containers": 1,
+    "data_stores": 0,
+    "external_systems": 0,
+    "diagrams": [
+      "c4-container",
+      "c4-component-python-dist"
+    ],
+    "model": "facts-only",
+    "model_errors": []
+  }
+}
