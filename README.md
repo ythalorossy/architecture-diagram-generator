@@ -88,7 +88,7 @@ Existing `architecture-docs/` output folders and `c4-model.json` files keep work
 | Tool | Required? | Version | Used for |
 |---|---|---|---|
 | An agent that reads [Agent Skills](https://agentskills.io) (Claude Code, Codex, Cursor, Gemini CLI, OpenCode, Copilot CLI, pi, …) | Yes | any recent | runs the skill |
-| Python | Yes | **3.11+** | the analyzer (standard library only, no `pip install`) |
+| Python | Yes | **3.11+ (checked at startup)** | the analyzer (standard library only, no `pip install`) |
 | Node.js | Optional | **22.13+** | rendering the diagrams to SVG with [`@mermaid-js/mermaid-cli`](https://github.com/mermaid-js/mermaid-cli) |
 
 **You don't need the toolchain of the repository you analyze.** The analyzer only reads files (`.csproj`, `package.json`, `pyproject.toml`, `pom.xml`, `settings.gradle`, source imports). You can analyze a .NET or Java repository without the .NET SDK, a JDK, Maven or Gradle installed, and you don't need to run `npm install` first.
@@ -101,9 +101,8 @@ Check your version:
 python3 --version
 ```
 
-- **3.11 or newer**: fully supported.
-- **3.9 / 3.10**: runs, but cannot read `pyproject.toml` (it needs `tomllib`, added in 3.11), so Python repositories are analyzed incompletely. The script prints a warning when this happens.
-- **3.8 or older**: not supported.
+- **3.11 or newer**: required (checked at startup).
+- **Older than 3.11**: not supported. The CLI exits with a clear message and an install hint naming `uv python install 3.12` and `brew install python` / python.org.
 
 If your system Python is older, install a newer one with your package manager, [python.org](https://www.python.org/downloads/), or `uv python install 3.12`.
 
@@ -159,6 +158,14 @@ python3 skills/c4-diagrams/scripts/render_c4.py ./architecture-docs/<repo name>
 ```
 
 The model format is described in [`assets/c4-model-reference.md`](skills/c4-diagrams/assets/c4-model-reference.md).
+
+## Running the tests
+
+The repo ships with a `unittest` suite that exercises the analyzer, the orchestrator and the CLIs with no network and no Node.js required. From the repository root:
+
+```bash
+python3 -m unittest discover -s tests
+```
 
 ## Layout
 

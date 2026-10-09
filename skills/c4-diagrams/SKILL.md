@@ -2,10 +2,10 @@
 name: c4-diagrams
 description: Use when the user asks for architecture documentation, C4 diagrams, a dependency graph or diagram, an architecture review, or an explanation of how a repository's projects, packages or modules fit together. Works on local repository paths (.NET, Java/Kotlin, Go, Node.js/TypeScript, Python).
 license: MIT
-compatibility: Requires python3 (3.11+). Node.js with @mermaid-js/mermaid-cli is optional, for SVG rendering.
+compatibility: Requires python3 (3.11+, checked at startup). Node.js with @mermaid-js/mermaid-cli is optional, for SVG rendering.
 metadata:
   author: ythalorossy
-  version: "3.2.0"
+  version: "3.3.0"
 ---
 
 # Architecture Diagram Generator
@@ -45,7 +45,7 @@ python3 scripts/analyze_repository.py <repository_path>
 - Paths to `scripts/` and `assets/` are relative to this skill's folder (the one holding this `SKILL.md`). Use its absolute path when running, since the working directory is the user's repository.
 - Run it from the user's current working directory. By default the files go to `./architecture-docs/<repository name>/` there, so the user can keep, commit or delete them. Pass `--output <directory>` only if the user named another location. Never write into the skill folder.
 - It writes `c4-facts.json`, facts-only C4 diagrams (`c4-container.*`, `c4-component-*.*`), `ArchitectureReport.md`, `dependency-graph.*`, `repository-scan.json` and `summary.json`.
-- Requires Python 3.11+ to read `pyproject.toml`.
+- Requires Python 3.11+ (checked at startup) to read `pyproject.toml`.
 - SVGs are rendered with `mmdc` or `npx @mermaid-js/mermaid-cli` and embedded in the report as images, so they show in any Markdown viewer. Without Node.js the report keeps only the Mermaid blocks. Tell the user if that happened.
 
 ## Step 2 — Read the facts and the code
