@@ -1,5 +1,6 @@
 import copy
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -13,6 +14,14 @@ MASK_PLACEHOLDER = "<masked>"
 
 _MASK_BY_NAME = {"run_id", "Generated On"}
 _MASK_BY_SUBSTRING = ("timestamp",)
+
+# Substrings that prove a string carries an absolute path component even when
+# the string itself starts with "../" or another relative prefix (notably the
+# repository_root value written by ``analyze_repository``: a relative path
+# from the output tmpdir back to the fixture, which embeds the user's home).
+_EMBEDDED_ABS_PATH = re.compile(
+    r"(/home/|/Users/|/private/|/var/folders/|C:\\|/root/)"
+)
 
 
 def write(root, files, crlf=False):
@@ -49,8 +58,9 @@ def _mask_value(value):
         }
     if isinstance(value, list):
         return [_mask_value(item) for item in value]
-    if isinstance(value, str) and value.startswith("/"):
-        return ABS_PATH_PLACEHOLDER
+    if isinstance(value, str):
+        if value.startswith("/") or _EMBEDDED_ABS_PATH.search(value):
+            return ABS_PATH_PLACEHOLDER
     return value
 
 

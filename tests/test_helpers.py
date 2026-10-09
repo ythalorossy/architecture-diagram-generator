@@ -18,6 +18,8 @@ class MaskTest(unittest.TestCase):
             },
             "untouched": "kept",
             "list": ["/abs/path", {"path": "/abs/other"}],
+            "relative_with_home": "../../home/alice/work/repo",
+            "relative_clean": "../../fixtures/repos/x",
         }
 
         masked = mask_volatile(sample)
@@ -35,6 +37,12 @@ class MaskTest(unittest.TestCase):
         # Masking is recursive into lists of scalars and dicts.
         self.assertEqual(masked["list"][0], "<abs-path>")
         self.assertEqual(masked["list"][1]["path"], "<abs-path>")
+        # A relative path that embeds an absolute home component (notably the
+        # ``repository_root`` value written by the analyzer) is masked so the
+        # golden stays portable across machines with different homes.
+        self.assertEqual(masked["relative_with_home"], "<abs-path>")
+        # A relative path that does not embed an absolute component survives.
+        self.assertEqual(masked["relative_clean"], "../../fixtures/repos/x")
         # Masking must not mutate the input.
         self.assertEqual(
             sample["summary"]["output_folder"],
