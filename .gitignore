@@ -4,3 +4,5 @@ node_modules/
 .agents/skills/
 skills-lock.json
 .playwright-mcp/
+.coverage
+.coverage.*
