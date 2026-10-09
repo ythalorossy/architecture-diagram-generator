@@ -20,11 +20,15 @@ target-version = "py311"
 # E501 at this width.
 line-length = 120
 
-# tests/fixtures/ holds input data (minimal third-party repositories) rather
-# than code we maintain, and SPEC-02 adds fixtures that are meant to be
-# malformed: non-UTF-8 files, unreadable directories, symlinks. Linting them
-# would report on the fixture, not on us.
-extend-exclude = ["tests/fixtures"]
+# SPEC-02 ships two trees that are NOT first-party code:
+#   * tests/fixtures/** — minimal third-party repositories used as analyzer
+#     input; SPEC-02 deliberately makes some of them malformed (non-UTF-8
+#     files, unreadable directories, symlinks). Ruff findings there would be
+#     about the fixture, not about us.
+#   * tests/golden/**   — generated JSON snapshots, never hand-edited.
+# Excluding the *directories* (not `tests/` as a whole) keeps
+# tests/test_*.py under lint coverage.
+extend-exclude = ["tests/fixtures", "tests/golden"]
 
 [tool.ruff.lint]
 # E9   syntax/indentation errors
