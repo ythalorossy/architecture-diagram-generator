@@ -57,11 +57,15 @@ class CliTest(unittest.TestCase):
             code, out, err = run(RENDER, str(empty), "--no-svg")
 
             self.assertEqual(code, 1)
-            self.assertIn(
-                "ERROR: " + str(empty) + "/c4-facts.json not found; "
-                "run analyze_repository.py first",
-                err,
-            )
+            # The contract is "the error names the file and tells the user
+            # what to do" — not the exact path form, which differs between
+            # POSIX (``/tmp/...``), Windows (backslash + 8.3 short names on
+            # some runners, long form on others), and ``str(Path)`` vs
+            # ``Path / "c4-facts.json"`` joining.
+            self.assertIn("ERROR:", err)
+            self.assertIn("c4-facts.json", err)
+            self.assertIn("not found", err)
+            self.assertIn("run analyze_repository.py first", err)
             self.assertNotIn("Traceback", err)
             self.assertNotIn("Traceback", out)
 
