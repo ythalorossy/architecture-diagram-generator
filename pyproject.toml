@@ -1,0 +1,34 @@
+# Dev-tool configuration only.
+#
+# This repository is NOT a pip package and is never installed: the skill is run
+# as plain scripts from skills/c4-diagrams/scripts/. Deliberately no [project]
+# table, no build-system and no dependency declarations, so nothing here can be
+# mistaken for runtime metadata. The runtime stays stdlib-only (SPEC-02 D6);
+# coverage and ruff are dev-only and are installed in .github/workflows/ci.yml.
+#
+# SPEC-15 extends this rule set (F401, F811, F841, F601, E501, I) together with
+# the reformat that goes with it. Until then the selection is the minimal
+# "would this file even parse / does it reference a name that does not exist"
+# set from the ruff docs, chosen so it stays green on the current codebase.
+
+[tool.ruff]
+# The floor this skill supports (SPEC-02 D1). Also stops ruff suggesting
+# rewrites into syntax that older interpreters cannot run.
+target-version = "py311"
+
+# Not enforced by the current selection; set ahead of SPEC-15, which turns on
+# E501 at this width.
+line-length = 120
+
+# tests/fixtures/ holds input data (minimal third-party repositories) rather
+# than code we maintain, and SPEC-02 adds fixtures that are meant to be
+# malformed: non-UTF-8 files, unreadable directories, symlinks. Linting them
+# would report on the fixture, not on us.
+extend-exclude = ["tests/fixtures"]
+
+[tool.ruff.lint]
+# E9   syntax/indentation errors
+# F63  comparison mistakes (e.g. `is` with a literal)
+# F7   syntax-adjacent mistakes (e.g. `l = 1l`, `break` outside a loop)
+# F82  undefined or misspelled names
+select = ["E9", "F63", "F7", "F82"]
