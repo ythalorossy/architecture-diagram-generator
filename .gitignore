@@ -6,3 +6,7 @@ skills-lock.json
 .playwright-mcp/
 .coverage
 .coverage.*
+docs
+docs/**
+.serena
+.serena/**
