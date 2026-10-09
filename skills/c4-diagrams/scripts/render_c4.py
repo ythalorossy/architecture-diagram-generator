@@ -22,6 +22,12 @@ SKILL_DIR = Path(__file__).resolve().parent.parent
 if str(SKILL_DIR) not in sys.path:
     sys.path.insert(0, str(SKILL_DIR))
 
+from scripts.cli_support import UserError, require_python, run_cli
+
+# Must run before the imports below: they reach python_projects, which needs
+# tomllib (3.11+) and would otherwise fail with an opaque ImportError.
+require_python()
+
 from scripts.generate_mermaid import _node_ids, render_svg
 from scripts import code_diagrams
 
@@ -749,7 +755,12 @@ def _inventory_section(facts, model):
 
 def render(output_dir, facts_only=False, svg=True):
     output = Path(output_dir).resolve()
-    facts = json.loads((output / "c4-facts.json").read_text(encoding="utf-8"))
+    facts_file = output / "c4-facts.json"
+    if not facts_file.is_file():
+        raise UserError(
+            f"{facts_file} not found; run analyze_repository.py first"
+        )
+    facts = json.loads(facts_file.read_text(encoding="utf-8"))
     model_file = output / "c4-model.json"
 
     errors, warnings = [], []
@@ -876,6 +887,7 @@ def main():
     parser.add_argument("output", help="Output folder written by analyze_repository.py")
     parser.add_argument("--facts-only", action="store_true", help="Ignore c4-model.json and draw from the facts alone")
     parser.add_argument("--no-svg", action="store_true", help="Skip SVG rendering")
+    parser.add_argument("--debug", action="store_true", help="Print the full traceback when an unexpected error occurs")
     args = parser.parse_args()
 
     result = render(args.output, facts_only=args.facts_only, svg=not args.no_svg)
@@ -894,4 +906,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    # --debug is read from argv here: run_cli needs it before main() parses.
+    run_cli(main, debug="--debug" in sys.argv)

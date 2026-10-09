@@ -9,6 +9,12 @@ SKILL_DIR = Path(__file__).resolve().parent.parent
 if str(SKILL_DIR) not in sys.path:
     sys.path.insert(0, str(SKILL_DIR))
 
+from scripts.cli_support import require_python, run_cli
+
+# Must run before the imports below: they reach python_projects, which needs
+# tomllib (3.11+) and would otherwise fail with an opaque ImportError.
+require_python()
+
 from scripts.detect_stack import detect_stack
 from scripts.scan_repo import scan_repo
 from scripts.build_graph import build_dependency_graph, build_groups
@@ -20,9 +26,10 @@ from scripts.code_diagrams import repository_root
 
 
 class RepositoryAnalyzer:
-    def __init__(self, repo_path: str, output_path: str):
+    def __init__(self, repo_path: str, output_path: str, no_svg: bool = False):
         self.repo_path = Path(repo_path).resolve()
         self.output_path = Path(output_path).resolve()
+        self.no_svg = no_svg
 
     def run(self):
         self._validate_repository()
@@ -186,10 +193,10 @@ class RepositoryAnalyzer:
         # An existing c4-model.json (written by the agent or edited by the user)
         # is kept and used; if it no longer matches the facts, fall back to
         # facts-only diagrams and report what to fix.
-        result = render_c4(self.output_path)
+        result = render_c4(self.output_path, svg=not self.no_svg)
         model_errors = result["errors"]
         if model_errors:
-            result = render_c4(self.output_path, facts_only=True)
+            result = render_c4(self.output_path, facts_only=True, svg=not self.no_svg)
 
         if result["svg_failed"]:
             print(
@@ -366,30 +373,39 @@ def parse_arguments():
         )
     )
 
+    parser.add_argument(
+        "--no-svg",
+        action="store_true",
+        help=(
+            "Skip SVG rendering so the output is byte-identical without "
+            "Node.js and @mermaid-js/mermaid-cli (recommended for CI and "
+            "golden-file tests)"
+        ),
+    )
+
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        help="Print the full traceback when an unexpected error occurs",
+    )
+
     return parser.parse_args()
 
 
 def main():
     args = parse_arguments()
 
-    try:
-        analyzer = RepositoryAnalyzer(
-            repo_path=args.repository,
-            output_path=args.output or default_output_path(args.repository)
-        )
+    analyzer = RepositoryAnalyzer(
+        repo_path=args.repository,
+        output_path=args.output or default_output_path(args.repository),
+        no_svg=args.no_svg,
+    )
 
-        analyzer.run()
+    analyzer.run()
 
-        sys.exit(0)
-
-    except Exception as ex:
-        print(
-            f"\nERROR: {ex}",
-            file=sys.stderr
-        )
-
-        sys.exit(1)
+    sys.exit(0)
 
 
 if __name__ == "__main__":
-    main()
+    # --debug is read from argv here: run_cli needs it before main() parses.
+    run_cli(main, debug="--debug" in sys.argv)
