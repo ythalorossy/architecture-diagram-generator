@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: acme
+      POSTGRES_USER: acme
+      POSTGRES_PASSWORD: acme
+
+  app:
+    build: ./app
+    environment:
+      DATABASE_URL: postgresql://acme:acme@db:5432/acme
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
